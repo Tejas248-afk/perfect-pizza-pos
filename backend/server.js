@@ -3,7 +3,6 @@ const dotenv = require('dotenv');
 const cors = require('cors');
 const morgan = require('morgan');
 const http = require('http');
-const path = require('path');
 const { Server } = require('socket.io');
 const connectDB = require('./config/db');
 
@@ -19,7 +18,7 @@ const server = http.createServer(app);
 // Initialize Socket.io
 const io = new Server(server, {
   cors: {
-    origin: '*', // Allows all for local and cloud usage
+    origin: '*',
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'],
   },
 });
@@ -37,16 +36,10 @@ io.on('connection', (socket) => {
 });
 
 // Middleware
-app.use(express.json());
+app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
-app.use(cors());
+app.use(cors({ origin: '*' }));
 app.use(morgan('dev'));
-
-// =====================================
-// FRONTEND HOSTING (FOR DEPLOYMENT)
-// =====================================
-// Tells express to host the 'frontend' folder
-app.use(express.static(path.join(__dirname, '../frontend')));
 
 // API Routes
 app.use('/api/auth', require('./routes/auth.routes'));
@@ -57,10 +50,9 @@ app.use('/api/reports', require('./routes/report.routes'));
 app.use('/api/inventory', require('./routes/inventory.routes'));
 app.use('/api/settings', require('./routes/settings.routes'));
 
-// Catch-all Fallback (Redirects unknown routes back to Login/Index Page)
-app.get('*', (req, res, next) => {
-  if (req.url.startsWith('/api')) return next();
-  res.sendFile(path.join(__dirname, '../frontend/index.html'));
+// Basic Health Check Route
+app.get('/', (req, res) => {
+  res.send('🍕 Perfect Pizza API & Socket Server is running...');
 });
 
 // Start Server using http.server (important for socket.io)
