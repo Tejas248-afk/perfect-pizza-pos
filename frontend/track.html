@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Live Order Tracker - Perfect Pizza</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <style>
+    * { box-sizing: border-box; font-family: 'Poppins', sans-serif; margin: 0; padding: 0; }
+    body { background: #0F172A; color: #FFFFFF; min-height: 100vh; display: flex; justify-content: center; align-items: center; padding: 20px; }
+    .tracker-card { background: #1E293B; border-radius: 20px; width: 100%; max-width: 480px; padding: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.5); border: 1px solid #334155; }
+    .header { text-align: center; border-bottom: 1px dashed #334155; padding-bottom: 16px; margin-bottom: 20px; }
+    .header h2 { font-size: 22px; color: #F8FAFC; }
+    .header p { font-size: 13px; color: #94A3B8; }
+    
+    /* Stepper UI */
+    .stepper { display: flex; flex-direction: column; gap: 20px; position: relative; margin: 25px 0; }
+    .step { display: flex; align-items: center; gap: 15px; position: relative; z-index: 2; opacity: 0.4; transition: all 0.4s ease; }
+    .step.active { opacity: 1; transform: scale(1.03); }
+    .step-icon { width: 50px; height: 50px; border-radius: 50%; background: #334155; display: flex; align-items: center; justify-content: center; font-size: 22px; border: 2px solid #475569; transition: all 0.3s; }
+    .step.active .step-icon { background: #1E5FBF; border-color: #60A5FA; box-shadow: 0 0 15px rgba(30, 95, 191, 0.6); }
+    .step.completed .step-icon { background: #10B981; border-color: #34D399; }
+    .step-info h4 { font-size: 15px; color: #F1F5F9; }
+    .step-info p { font-size: 12px; color: #94A3B8; }
+    
+    .order-summary { background: #0F172A; border-radius: 12px; padding: 16px; margin-top: 20px; border: 1px solid #1E293B; }
+    .summary-title { font-size: 13px; font-weight: 700; color: #64748B; margin-bottom: 10px; text-transform: uppercase; }
+    .item-line { display: flex; justify-content: space-between; font-size: 13px; color: #CBD5E1; margin-bottom: 6px; }
+    .total-line { display: flex; justify-content: space-between; font-size: 16px; font-weight: 800; color: #34D399; border-top: 1px dashed #334155; padding-top: 10px; margin-top: 10px; }
+    
+    .pulse-animation { animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.08); } 100% { transform: scale(1); } }
+  </style>
+</head>
+<body>
+
+  <div class="tracker-card">
+    <div class="header">
+      <h2>🍕 Perfect Pizza</h2>
+      <p>Order No: <strong id="orderNoText" style="color:#60A5FA;">Loading...</strong></p>
+    </div>
+
+    <!-- Stepper Timeline -->
+    <div class="stepper">
+      <div class="step" id="step-new">
+        <div class="step-icon">📋</div>
+        <div class="step-info">
+          <h4>Order Confirmed</h4>
+          <p>Kitchen received your order</p>
+        </div>
+      </div>
+
+      <div class="step" id="step-preparing">
+        <div class="step-icon">👨‍🍳</div>
+        <div class="step-info">
+          <h4>Baking in Oven</h4>
+          <p>Chef is making your fresh pizza</p>
+        </div>
+      </div>
+
+      <div class="step" id="step-ready">
+        <div class="step-icon">✅</div>
+        <div class="step-info">
+          <h4>Order Ready!</h4>
+          <p>Packed & ready for pickup/delivery</p>
+        </div>
+      </div>
+
+      <div class="step" id="step-completed">
+        <div class="step-icon">🎉</div>
+        <div class="step-info">
+          <h4>Delivered / Enjoy!</h4>
+          <p>Hope you enjoy your meal!</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Order Summary -->
+    <div class="order-summary">
+      <div class="summary-title">Order Items</div>
+      <div id="itemsList"></div>
+      <div class="total-line">
+        <span>Total Paid</span>
+        <span id="grandTotalText">₹0</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const SOCKET_URL = window.location.origin.includes('localhost') ? 'http://localhost:5000' : window.location.origin;
+    const API_URL = `${SOCKET_URL}/api`;
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const orderId = urlParams.get('id');
+
+    let socket;
+
+    async function loadTrackerData() {
+      if (!orderId) {
+        document.body.innerHTML = "<h2 style='color:white; text-align:center;'>Invalid Tracker Link</h2>";
+        return;
+      }
+
+      try {
+        const res = await fetch(`${API_URL}/orders/${orderId}`);
+        const order = await res.json();
+        updateUI(order);
+        connectSocket();
+      } catch (err) {
+        console.error("Tracker Load Error:", err);
+      }
+    }
+
+    function updateUI(order) {
+      document.getElementById('orderNoText').innerText = order.orderNumber || order._id;
+      document.getElementById('grandTotalText').innerText = `₹${order.grandTotal}`;
+
+      // Render Items
+      const itemsContainer = document.getElementById('itemsList');
+      itemsContainer.innerHTML = (order.items || []).map(i => `
+        <div class="item-line">
+          <span>${i.qty}x ${i.product?.name || i.productName}</span>
+          <span>₹${(i.basePrice + (i.crustPrice||0) + (i.addonsTotal||0)) * i.qty}</span>
+        </div>
+      `).join('');
+
+      // Update Stepper
+      const steps = ['new', 'preparing', 'ready', 'completed'];
+      const currentIdx = steps.indexOf(order.status);
+
+      steps.forEach((st, idx) => {
+        const el = document.getElementById(`step-${st}`);
+        if (!el) return;
+        el.classList.remove('active', 'completed', 'pulse-animation');
+
+        if (idx < currentIdx) {
+          el.classList.add('completed');
+        } else if (idx === currentIdx) {
+          el.classList.add('active', 'pulse-animation');
+        }
+      });
+    }
+
+    function connectSocket() {
+      socket = io(SOCKET_URL);
+      socket.on('orderUpdated', (updatedOrder) => {
+        if (updatedOrder._id === orderId) {
+          updateUI(updatedOrder);
+        }
+      });
+    }
+
+    loadTrackerData();
+  </script>
+</body>
+</html>

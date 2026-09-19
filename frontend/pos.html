@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>POS - Perfect Pizza</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/pos.css">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <!-- Top Navbar -->
+  <header class="pos-header">
+    <div class="brand">
+      <img src="images/logo.png" alt="Perfect Pizza" class="brand-logo">
+      <div>
+        <h2>Perfect Pizza</h2>
+        <small id="branchName">Kalyanpur</small>
+      </div>
+    </div>
+    
+    <div class="user-info">
+      <button class="btn-night-toggle" id="nightModeBtn" onclick="toggleNightMode()">🌙 Night</button>
+      <a href="kitchen.html" target="_blank" class="btn-orders-nav btn-nav-dark">👨‍🍳 Kitchen</a>
+      <a href="tables.html" class="btn-orders-nav btn-nav-yellow">🪑 Tables</a>
+      <a href="menu-manager.html" class="btn-orders-nav" style="background:#8B5CF6;">📝 Menu</a>
+      <a href="reports.html" class="btn-orders-nav btn-nav-blue">📊 Reports</a>
+      <a href="settings.html" class="btn-orders-nav" style="background:#334155;">⚙️ Settings</a>
+      <a href="orders.html" class="btn-orders-nav btn-nav-primary">📋 Live Orders</a>
+      <span id="userName">👤 Cashier</span>
+      <button onclick="logout()" class="btn-logout">Logout</button>
+    </div>
+  </header>
+
+  <!-- Smart Action Bar -->
+  <div class="smart-action-bar">
+    <div class="customer-search-wrap">
+      <input type="text" id="customerPhone" placeholder="📞 10-Digit Phone" maxlength="10">
+      <button class="btn-search-icon" onclick="manualCustomerSearch()">🔍</button>
+      <input type="text" id="customerName" placeholder="👤 Name">
+      <input type="text" id="customerAddress" placeholder="📍 Address" style="display:none; width: 250px;">
+    </div>
+    <div class="order-type-selector">
+      <label><input type="radio" name="orderType" value="delivery" checked> 🚚 Delivery</label>
+      <label><input type="radio" name="orderType" value="takeaway"> 🥡 Takeaway</label>
+      <label><input type="radio" name="orderType" value="dine-in"> 🪑 Dine-in</label>
+    </div>
+  </div>
+
+  <!-- Main POS Container -->
+  <div class="pos-container">
+    
+    <!-- Left: Categories -->
+    <aside class="categories-sidebar" id="categoriesList">
+      <div class="loading">Loading...</div>
+    </aside>
+
+    <!-- Center: Products Area -->
+    <main class="products-area">
+      
+      <!-- Customer Card + Previous Orders -->
+      <div id="customerCard" class="customer-card hidden">
+        <div class="customer-card-top">
+          <div class="cc-left">
+            <strong id="ccName">Customer</strong>
+            <span id="ccPhone" class="muted">98XXXXXXXX</span>
+          </div>
+          <div class="cc-stats">
+            <span class="badge-coin">🪙 <b id="ccCoins">0</b> Coins</span>
+            <span>📦 <b id="ccOrders">0</b> Orders</span>
+            <span>💰 ₹<b id="ccSpent">0</b></span>
+          </div>
+        </div>
+
+        <div class="cc-prev-wrap">
+          <div class="cc-prev-title">📜 Previous Orders (Last 5)</div>
+          <div id="ccPrevOrders" class="cc-prev-orders"></div>
+        </div>
+      </div>
+
+      <!-- Products Grid -->
+      <div class="products-grid" id="productsGrid"></div>
+    </main>
+
+    <!-- Right: Cart Panel (Ab ye Slide-out ban jayega) -->
+    <aside class="cart-panel">
+      <div class="cart-header">
+        <h3>🛒 Current Order</h3>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span class="item-count" id="cartItemCount">0 items</span>
+          <!-- CLOSE BUTTON ADDED HERE -->
+          <button class="btn-close-cart" onclick="toggleCart()">✕</button>
+        </div>
+      </div>
+
+      <div id="existingItemsContainer" style="display:none; background:#F8FAFC; padding:12px; border-bottom:1px solid #E2E8F0;">
+        <div style="font-size:11px; font-weight:800; color:#64748B; letter-spacing:0.5px; margin-bottom:8px;">PREVIOUS KOT ITEMS:</div>
+        <div id="existingItemsList"></div>
+      </div>
+
+      <div class="cart-items" id="cartItems">
+        <div class="empty-cart">
+          <span style="font-size:40px; margin-bottom:10px; display:block;">🛒</span>
+          Cart is empty
+        </div>
+      </div>
+
+      <!-- PREMIUM CART SUMMARY -->
+      <div class="cart-summary">
+        <div class="summary-line">
+          <span class="label">Subtotal</span>
+          <span id="cartSubtotal" class="value font-bold">₹0</span>
+        </div>
+        
+        <div class="summary-line">
+          <span class="label text-danger">Discount (₹)</span>
+          <input type="number" id="discountInput" value="0" min="0" class="mini-input">
+        </div>
+        
+        <div class="summary-line" id="coinsRow">
+          <label class="coins-label">
+            <input type="checkbox" id="redeemCoinsToggle" disabled>
+            🪙 Use Coins (<span id="availableCoinsText">0</span>)
+          </label>
+          <span id="cartCoinsDiscount" class="value text-success font-bold">-₹0</span>
+        </div>
+
+        <div class="summary-line" id="serviceRow">
+          <span class="label">Service Charge (₹)</span>
+          <input type="number" id="serviceChargeInput" value="0" min="0" class="mini-input">
+        </div>
+
+        <div class="summary-line" id="deliveryRow">
+          <span class="label">Delivery Charge (₹)</span>
+          <input type="number" id="deliveryChargeInput" value="0" min="0" class="mini-input">
+        </div>
+
+        <div class="summary-line gst-line">
+          <label class="gst-label">
+            <input type="checkbox" id="gstToggle">
+            <span class="gst-text">Add 5% GST</span>
+          </label>
+          <span id="cartGst" class="value font-bold">₹0</span>
+        </div>
+        
+        <div class="summary-line payment-line">
+          <span class="label font-bold">Payment</span>
+          <select id="paymentMethod" class="select-input">
+            <option value="upi">UPI ✅</option>
+            <option value="cash">Cash 💵</option>
+            <option value="card">Card 💳</option>
+          </select>
+        </div>
+
+        <div class="grand-total-box">
+          <span>TOTAL</span>
+          <span id="cartTotal">₹0</span>
+        </div>
+      </div>
+
+      <div class="cart-actions">
+        <button class="btn-pay" id="payBtn">💳 PAY & BILL</button>
+        <button class="btn-clear" id="clearTableBtn" style="display:none;">🖨️ FINAL BILL (CLEAR TABLE)</button>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Customization Modal -->
+  <div class="modal-overlay hidden" id="itemModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="modalItemName">Item Name</h3>
+        <button class="close-modal" onclick="closeModal()">✕</button>
+      </div>
+      <div class="modal-body" id="modalBody"></div>
+      <div class="modal-footer">
+        <div class="qty-control">
+          <button onclick="updateModalQty(-1)">-</button>
+          <span id="modalQty">1</span>
+          <button onclick="updateModalQty(1)">+</button>
+        </div>
+        <button class="btn-add-cart" onclick="addToCart()">Add to Cart - <span id="modalPrice">₹0</span></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hidden Print Container -->
+  <div id="printReceipt" class="print-only"></div>
+
+  <!-- ================= NEW SLIDE-OUT CART ELEMENTS ================= -->
+  <!-- Background kala karne ke liye jab cart khule -->
+  <div class="cart-overlay" id="cartOverlay" onclick="toggleCart()"></div>
+
+  <!-- Niche ka Floating Button -->
+  <button class="floating-cart-btn" id="floatingCartBtn" onclick="toggleCart()">
+    🛒 View Cart (<span id="floatItemCount">0</span>) - ₹<span id="floatTotal">0</span>
+  </button>
+
+  <script src="js/pos.js"></script>
+</body>
+</html>

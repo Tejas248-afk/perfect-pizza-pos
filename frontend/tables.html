@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tables - Perfect Pizza</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/tables.css">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+    <header class="pos-header">
+    <div class="brand">
+      <span class="logo">🪑</span>
+      <h2>Tables <small>Dine-in</small></h2>
+    </div>
+    <div class="user-info">
+  <a href="tables.html" class="btn-orders-nav btn-nav-yellow">🪑 Tables</a>
+<a href="menu-manager.html" class="btn-orders-nav" style="background:#8B5CF6;">📝 Menu</a>
+<a href="reports.html" class="btn-orders-nav btn-nav-blue">📊 Reports</a>
+<a href="settings.html" class="btn-orders-nav" style="background:#334155;">⚙️ Settings</a>
+<a href="orders.html" class="btn-orders-nav btn-nav-primary">📋 Live Orders</a>
+  <button onclick="logout()" class="btn-logout">Logout</button>
+</div>
+  </header>
+
+  <div class="tables-container">
+    <button class="btn-seed hidden" id="seedTablesBtn" onclick="seedTables()">Initialize 4 Tables</button>
+    <div class="tables-grid" id="tablesGrid">
+      <!-- Tables injected via JS -->
+      <div class="loading">Loading Tables...</div>
+    </div>
+  </div>
+
+  <script src="js/tables.js"></script>
+</body>
+</html>

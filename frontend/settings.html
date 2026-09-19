@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Settings - Perfect Pizza</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/settings.css">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <header class="pos-header">
+    <div class="brand">
+      <span class="logo">⚙️</span>
+      <h2>Settings <small>Café · Staff · Rewards</small></h2>
+    </div>
+    <div class="user-info">
+      <a href="kitchen.html" target="_blank" class="btn-orders-nav btn-nav-dark">👨‍🍳 Kitchen</a>
+      <a href="tables.html" class="btn-orders-nav btn-nav-yellow">🪑 Tables</a>
+      <a href="menu-manager.html" class="btn-orders-nav" style="background:#8B5CF6;">📝 Menu</a>
+      <a href="reports.html" class="btn-orders-nav btn-nav-blue">📊 Reports</a>
+      <a href="pos.html" class="btn-orders-nav btn-nav-gray">← POS</a>
+      <button onclick="logout()" class="btn-logout">Logout</button>
+    </div>
+  </header>
+
+  <div class="settings-wrap">
+    <div class="settings-tabs">
+      <button class="st-tab active" onclick="switchSettingsTab('cafe')">🏪 Café Details</button>
+      <button class="st-tab" onclick="switchSettingsTab('rewards')">🎁 Rewards</button>
+      <button class="st-tab" onclick="switchSettingsTab('staff')">👥 Staff</button>
+    </div>
+
+    <!-- CAFE DETAILS -->
+    <section id="tab-cafe" class="settings-panel">
+      <div class="settings-card">
+        <h3>Café Information</h3>
+        <form id="cafeForm" onsubmit="saveCafeSettings(event)">
+          <div class="form-grid">
+            <div class="fg">
+              <label>Café Name</label>
+              <input type="text" id="cafeName" required>
+            </div>
+            <div class="fg">
+              <label>Tagline</label>
+              <input type="text" id="tagline">
+            </div>
+            <div class="fg full">
+              <label>Address</label>
+              <input type="text" id="address">
+            </div>
+            <div class="fg">
+              <label>Phone</label>
+              <input type="text" id="phone">
+            </div>
+            <div class="fg">
+              <label>WhatsApp</label>
+              <input type="text" id="whatsapp">
+            </div>
+            <div class="fg">
+              <label>GSTIN</label>
+              <input type="text" id="gstNumber">
+            </div>
+            <div class="fg">
+              <label>Email</label>
+              <input type="email" id="email">
+            </div>
+            <div class="fg">
+              <label>Website</label>
+              <input type="text" id="website">
+            </div>
+            <div class="fg">
+              <label>Working Hours</label>
+              <input type="text" id="workingHours" placeholder="10:00 AM - 11:00 PM">
+            </div>
+            <div class="fg">
+              <label>Invoice Prefix</label>
+              <input type="text" id="invoicePrefix" placeholder="PP-KLP-">
+            </div>
+            <div class="fg full">
+              <label>Bill Footer Text</label>
+              <input type="text" id="footerText" placeholder="Thank You! Visit Again 🍕">
+            </div>
+            <div class="fg">
+              <label>Default GST %</label>
+              <input type="number" id="defaultGST" min="0" step="0.1" value="5">
+            </div>
+            <div class="fg check-fg">
+              <label class="check-label">
+                <input type="checkbox" id="gstDefaultOn">
+                GST ON by default on new bills
+              </label>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn-save">💾 Save Café Settings</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- REWARDS -->
+    <section id="tab-rewards" class="settings-panel hidden">
+      <div class="settings-card">
+        <h3>Reward Coins Rules</h3>
+        <p class="hint-text">Current rule example: Bill &gt; ₹100 → 20 coins, else 10 coins. Redeem: 20 coins = ₹5</p>
+        <form id="rewardsForm" onsubmit="saveRewardSettings(event)">
+          <div class="form-grid">
+            <div class="fg">
+              <label>Bill threshold (₹)</label>
+              <input type="number" id="rewardThreshold" min="0" value="100">
+            </div>
+            <div class="fg">
+              <label>Coins if bill ABOVE threshold</label>
+              <input type="number" id="earnAboveHundred" min="0" value="20">
+            </div>
+            <div class="fg">
+              <label>Coins if bill ≤ threshold</label>
+              <input type="number" id="earnBelowOrEqualHundred" min="0" value="10">
+            </div>
+            <div class="fg">
+              <label>Coins per redeem block</label>
+              <input type="number" id="coinsPerRedeemBlock" min="1" value="20">
+            </div>
+            <div class="fg">
+              <label>Value of one block (₹)</label>
+              <input type="number" id="redeemBlockValue" min="1" value="5">
+            </div>
+          </div>
+          <div class="reward-preview" id="rewardPreview">
+            20 coins = ₹5 discount
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn-save">💾 Save Reward Rules</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- STAFF -->
+    <section id="tab-staff" class="settings-panel hidden">
+      <div class="settings-card">
+        <div class="staff-head">
+          <h3>Staff Accounts</h3>
+          <button type="button" class="btn-add-staff" onclick="openStaffModal()">+ Add Staff</button>
+        </div>
+        <div class="table-wrap">
+          <table class="staff-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Phone</th>
+                <th>Role</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="staffBody">
+              <tr><td colspan="5" class="empty">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Staff Modal -->
+  <div id="staffModal" class="mm-overlay" style="display:none;">
+    <div class="mm-modal" style="max-width:480px;">
+      <div class="mm-modal-head">
+        <h3 id="staffModalTitle">Add Staff</h3>
+        <button type="button" class="mm-close" onclick="closeStaffModal()">✕</button>
+      </div>
+      <form id="staffForm" onsubmit="saveStaff(event)" class="mm-form">
+        <div class="mm-modal-body">
+          <input type="hidden" id="staffId">
+          <div class="fg">
+            <label>Full Name *</label>
+            <input type="text" id="staffName" required placeholder="e.g. Rahul">
+          </div>
+          <div class="fg">
+            <label>Phone * (login ID)</label>
+            <input type="text" id="staffPhone" required maxlength="10" placeholder="10-digit phone">
+          </div>
+          <div class="fg">
+            <label>Email</label>
+            <input type="email" id="staffEmail" placeholder="optional">
+          </div>
+          <div class="fg">
+            <label>Role *</label>
+            <select id="staffRole" required>
+              <option value="cashier">Cashier</option>
+              <option value="kitchen">Kitchen</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+          <div class="fg">
+            <label id="staffPassLabel">Password *</label>
+            <input type="text" id="staffPassword" placeholder="min 4 characters">
+          </div>
+          <div class="fg check-fg" id="staffActiveWrap" style="display:none;">
+            <label class="check-label">
+              <input type="checkbox" id="staffActive" checked>
+              Account Active
+            </label>
+          </div>
+        </div>
+        <div class="mm-modal-foot">
+          <button type="button" class="mm-btn mm-btn-cancel" onclick="closeStaffModal()">Cancel</button>
+          <button type="submit" class="mm-btn mm-btn-save">Save Staff</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="js/settings.js"></script>
+</body>
+</html>

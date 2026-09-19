@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Menu Manager - Perfect Pizza</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/menu-manager.css">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <!-- Unified Header -->
+  <header class="pos-header">
+    <div class="brand">
+      <span class="logo">📝</span>
+      <h2>Menu Manager <small>Edit Products, Prices, Crusts, Add-ons</small></h2>
+    </div>
+    <div class="user-info">
+      <a href="kitchen.html" target="_blank" class="btn-orders-nav btn-nav-dark">👨‍🍳 Kitchen</a>
+      <a href="tables.html" class="btn-orders-nav btn-nav-yellow">🪑 Tables</a>
+      <a href="reports.html" class="btn-orders-nav btn-nav-blue">📊 Reports</a>
+      <a href="orders.html" class="btn-orders-nav btn-nav-primary">📋 Live Orders</a>
+      <a href="settings.html" class="btn-orders-nav" style="background:#475569;">⚙️ Settings</a>
+      <a href="pos.html" class="btn-orders-nav btn-nav-gray">← POS</a>
+      <button onclick="logout()" class="btn-logout">Logout</button>
+    </div>
+  </header>
+
+  <div class="manager-container">
+    
+    <!-- Tab Navigation -->
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab('products')">🍕 Products & Prices</button>
+      <button class="tab-btn" onclick="switchTab('categories')">📁 Categories</button>
+      <button class="tab-btn" onclick="switchTab('crusts')">🍞 Crusts</button>
+      <button class="tab-btn" onclick="switchTab('addons')">🧀 Add-ons</button>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+      <h3 id="currentTabTitle">Manage Products</h3>
+      <button class="btn-nav-primary btn-orders-nav" onclick="openModal()" style="height: 40px;">+ Add New Item</button>
+    </div>
+
+    <!-- Data Table -->
+    <div class="table-card">
+      <div class="table-wrapper">
+        <table class="data-table">
+          <thead id="tableHead">
+            <!-- Injected via JS -->
+          </thead>
+          <tbody id="tableBody">
+            <tr><td colspan="5" style="text-align: center; padding: 20px;">Loading data...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+    <!-- EDIT MODAL - FIXED -->
+  <div id="editModal" class="mm-overlay" style="display:none;">
+    <div class="mm-modal">
+      <div class="mm-modal-head">
+        <h3 id="modalTitle">Add / Edit Item</h3>
+        <button type="button" class="mm-close" onclick="closeModal()">✕</button>
+      </div>
+
+      <form id="editForm" onsubmit="saveItem(event)" class="mm-form">
+        <div class="mm-modal-body" id="modalFormBody">
+          <!-- JS fields -->
+        </div>
+
+        <div class="mm-modal-foot">
+          <button type="button" class="mm-btn mm-btn-cancel" onclick="closeModal()">Cancel</button>
+          <button type="submit" class="mm-btn mm-btn-save">💾 Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="js/menu-manager.js"></script>
+</body>
+</html>

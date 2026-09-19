@@ -1,0 +1,82 @@
+.tables-container {
+  padding: 30px;
+  background: #F8FAFC;
+  min-height: calc(100vh - 60px);
+}
+
+.tables-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 20px;
+}
+
+.table-card {
+  background: white;
+  border-radius: 16px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  box-shadow: 0 4px 10px rgba(0,0,0,0.03);
+  text-align: center;
+  transition: 0.2s;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+.table-card:hover { transform: translateY(-5px); box-shadow: 0 8px 15px rgba(0,0,0,0.06); }
+
+.table-card::before {
+  content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 6px;
+}
+.table-card.available::before { background: #22C55E; }
+.table-card.occupied::before { background: #F59E0B; }
+
+.table-icon { font-size: 40px; margin-bottom: 10px; }
+.table-name { font-size: 20px; font-weight: 700; color: #1E293B; margin-bottom: 5px; }
+
+.status-badge {
+  display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; text-transform: uppercase;
+}
+.available .status-badge { background: #DCFCE7; color: #16A34A; }
+.occupied .status-badge { background: #FEF3C7; color: #D97706; }
+
+.table-details { margin-top: 15px; font-size: 13px; color: #64748B; border-top: 1px dashed #E2E8F0; padding-top: 10px;}
+.table-details b { color: #1E293B; font-size: 16px; }
+
+.btn-seed { background: #1E40AF; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; margin-bottom: 20px; }
+/* =========================================
+   SMART TABLE TIMER STYLES
+========================================= */
+.table-timer {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 4px 8px;
+  border-radius: 20px;
+  color: white;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+}
+
+/* Green (0-20 mins) */
+.timer-green { background: #10B981; }
+.timer-green-border { border-color: #10B981 !important; }
+
+/* Yellow (20-45 mins) */
+.timer-yellow { background: #F59E0B; }
+.timer-yellow-border { border-color: #F59E0B !important; }
+
+/* Red Pulse (45+ mins) */
+.timer-red-pulse {
+  background: #EF4444;
+  animation: tableBlink 1.2s infinite;
+}
+.timer-red-pulse-border {
+  border-color: #EF4444 !important;
+}
+
+@keyframes tableBlink {
+  0% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.8; transform: scale(1.05); }
+  100% { opacity: 1; transform: scale(1); }
+}

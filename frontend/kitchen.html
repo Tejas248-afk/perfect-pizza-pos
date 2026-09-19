@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kitchen Display - Perfect Pizza</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/kitchen.css">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+</head>
+<body class="kitchen-body">
+
+  <header class="kitchen-header">
+    <div class="brand">
+      <span class="logo">👨‍🍳</span>
+      <div>
+        <h2>Kitchen Display</h2>
+        <small>Perfect Pizza · Live Orders</small>
+        <button class="btn-night-toggle" id="nightModeBtn" onclick="toggleNightMode()">🌙 Night</button>
+      </div>
+    </div>
+
+    <div class="header-right">
+      <div class="sound-toggle">
+        <label>
+          <input type="checkbox" id="soundToggle" checked>
+          🔊 Sound ON
+        </label>
+      </div>
+      <div class="connection-status" id="connectionStatus">
+        <span class="dot offline"></span> Connecting...
+      </div>
+      <button class="btn-refresh" onclick="loadKitchenOrders()">🔄 Refresh</button>
+      <a href="pos.html" class="btn-back-pos">← POS</a>
+    </div>
+  </header>
+
+  <div class="kitchen-stats">
+    <div class="stat-box new"><span id="countNew">0</span> New</div>
+    <div class="stat-box preparing"><span id="countPreparing">0</span> Preparing</div>
+    <div class="stat-box ready"><span id="countReady">0</span> Ready</div>
+  </div>
+
+  <div class="kitchen-board">
+    <!-- NEW -->
+    <section class="kitchen-column">
+      <div class="column-header new-header">
+        <h3>🆕 NEW</h3>
+        <span class="col-count" id="badgeNew">0</span>
+      </div>
+      <div class="column-body" id="colNew"></div>
+    </section>
+
+    <!-- PREPARING -->
+    <section class="kitchen-column">
+      <div class="column-header preparing-header">
+        <h3>🔥 PREPARING</h3>
+        <span class="col-count" id="badgePreparing">0</span>
+      </div>
+      <div class="column-body" id="colPreparing"></div>
+    </section>
+
+    <!-- READY -->
+    <section class="kitchen-column">
+      <div class="column-header ready-header">
+        <h3>✅ READY</h3>
+        <span class="col-count" id="badgeReady">0</span>
+      </div>
+      <div class="column-body" id="colReady"></div>
+    </section>
+  </div>
+
+  <script src="js/kitchen.js"></script>
+</body>
+</html>

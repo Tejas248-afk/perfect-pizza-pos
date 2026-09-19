@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reports - Perfect Pizza</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/reports.css">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+   <header class="pos-header">
+    <div class="brand">
+      <span class="logo">📊</span>
+      <h2>Reports <small>Sales Analytics</small></h2>
+    </div>
+    <div class="user-info">
+  <a href="kitchen.html" target="_blank" class="btn-orders-nav btn-nav-dark">👨‍🍳 Kitchen</a>
+  <a href="tables.html" class="btn-orders-nav btn-nav-yellow">🪑 Tables</a>
+  <a href="menu-manager.html" class="btn-orders-nav" style="background:#8B5CF6;">📝 Menu</a>
+  <a href="orders.html" class="btn-orders-nav btn-nav-primary">📋 Live Orders</a>
+  <a href="pos.html" class="btn-orders-nav btn-nav-gray">← POS</a>
+  <a href="settings.html" class="btn-orders-nav" style="background:#475569;">⚙️ Settings</a>
+  <button onclick="logout()" class="btn-logout">Logout</button>
+</div>
+  </header>
+
+  <div class="reports-container">
+    
+    <!-- Filter Bar -->
+    <div class="filter-card">
+      <div class="preset-buttons">
+        <button class="btn-preset active" onclick="setFilter('today')">Today</button>
+        <button class="btn-preset" onclick="setFilter('yesterday')">Yesterday</button>
+        <button class="btn-preset" onclick="setFilter('thisWeek')">This Week</button>
+        <button class="btn-preset" onclick="setFilter('thisMonth')">This Month</button>
+      </div>
+
+      <div class="custom-date-range">
+        <input type="date" id="startDate">
+        <span>to</span>
+        <input type="date" id="endDate">
+        <button class="btn-apply" onclick="fetchReports()">Apply Filter</button>
+      </div>
+    </div>
+
+    <!-- KPI Summary Cards -->
+    <div class="kpi-grid">
+      <div class="kpi-card primary">
+        <div class="kpi-title">TOTAL REVENUE</div>
+        <div class="kpi-value" id="valTotalSales">₹0</div>
+        <div class="kpi-sub">Net business collected</div>
+      </div>
+
+      <div class="kpi-card success">
+        <div class="kpi-title">TOTAL ORDERS</div>
+        <div class="kpi-value" id="valTotalOrders">0</div>
+        <div class="kpi-sub">Completed orders</div>
+      </div>
+
+      <div class="kpi-card info">
+        <div class="kpi-title">AVG ORDER VALUE</div>
+        <div class="kpi-value" id="valAvgOrder">₹0</div>
+        <div class="kpi-sub">Per bill average</div>
+      </div>
+
+      <div class="kpi-card warning">
+        <div class="kpi-title">TOTAL GST COLLECTED</div>
+        <div class="kpi-value" id="valGst">₹0</div>
+        <div class="kpi-sub">Tax sum (5%)</div>
+      </div>
+    </div>
+
+    <!-- Payment & Order Types Breakdown -->
+    <div class="analytics-grid">
+      
+      <div class="analytics-card">
+        <h3>💳 Payment Mode Collection</h3>
+        <div class="breakdown-list">
+          <div class="breakdown-item">
+            <span>UPI / Online ✅</span>
+            <strong id="valUpi">₹0</strong>
+          </div>
+          <div class="breakdown-item">
+            <span>Cash 💵</span>
+            <strong id="valCash">₹0</strong>
+          </div>
+          <div class="breakdown-item">
+            <span>Card 💳</span>
+            <strong id="valCard">₹0</strong>
+          </div>
+        </div>
+      </div>
+
+      <div class="analytics-card">
+        <h3>📦 Order Type Breakdown</h3>
+        <div class="breakdown-list">
+          <div class="breakdown-item">
+            <span>🚚 Delivery Orders</span>
+            <strong id="valTypeDelivery">0</strong>
+          </div>
+          <div class="breakdown-item">
+            <span>🥡 Takeaway Orders</span>
+            <strong id="valTypeTakeaway">0</strong>
+          </div>
+          <div class="breakdown-item">
+            <span>🪑 Dine-in Orders</span>
+            <strong id="valTypeDinein">0</strong>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Top Selling Products Table -->
+    <div class="table-card">
+      <h3>🍕 Top Selling Products & Revenue</h3>
+      <div class="table-wrapper">
+        <table class="report-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Product Name</th>
+              <th>Quantity Sold</th>
+              <th>Total Revenue Generated</th>
+            </tr>
+          </thead>
+          <tbody id="topProductsBody">
+            <tr><td colspan="4" class="text-center">Loading data...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="js/reports.js"></script>
+</body>
+</html>
