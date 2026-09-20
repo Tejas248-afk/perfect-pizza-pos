@@ -81,9 +81,11 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// 4. POST Create New Order (100% BULLETPROOF & SAFE)
+// 4. POST Create New Order (SUPER SAFE & DETAILED ERROR LOGGING)
 router.post('/', async (req, res) => {
   try {
+    console.log("📥 Incoming Order Body:", JSON.stringify(req.body, null, 2));
+
     const {
       orderType,
       customerPhone,
@@ -102,16 +104,16 @@ router.post('/', async (req, res) => {
       paymentMethod,
     } = req.body;
 
-    // --- 1. SANITIZE ITEMS ---
+    // --- SANITIZE ITEMS ---
     const sanitizedItems = (items || []).map((item) => {
       let rawProdId = item.product?._id || (typeof item.product === 'string' ? item.product : null);
-      let validProdId = (rawProdId && isValidObjectId(rawProdId)) ? rawProdId : null;
+      let validProdId = (rawProdId && isValidObjectId(rawProdId)) ? rawProdId : new mongoose.Types.ObjectId();
       let pName = item.product?.name || item.productName || 'Item';
 
       let crustData = null;
       if (item.crust) {
         let crustName = typeof item.crust === 'object' ? (item.crust.name || '') : String(item.crust);
-        crustData = crustName ? { name: crustName } : null;
+        if (crustName) crustData = { name: crustName };
       }
 
       let addonsList = (item.addons || []).map((a) => {
@@ -133,11 +135,12 @@ router.post('/', async (req, res) => {
       };
     });
 
-    // --- 2. GENERATE ORDER NUMBER ---
-    const count = await Order.countDocuments();
-    const orderNumber = `ORD-${101 + count}`;
+    // --- UNIQUE ORDER NUMBER GENERATION ---
+    const dateSuffix = Date.now().toString().slice(-4);
+    const randomNum = Math.floor(100 + Math.random() * 900);
+    const orderNumber = `ORD-${dateSuffix}-${randomNum}`;
 
-    // --- 3. REWARD COINS & CUSTOMER HANDLING ---
+    // --- REWARD COINS & CUSTOMER HANDLING ---
     const safeGrandTotal = Number(grandTotal) || 0;
     const rewardCoinsEarned = Math.floor(safeGrandTotal / 50);
 
@@ -177,11 +180,11 @@ router.post('/', async (req, res) => {
           customerObj = existingCustomer;
         }
       } catch (custErr) {
-        console.error("Customer Save Warning:", custErr.message);
+        console.error("⚠️ Customer Save Warning:", custErr.message);
       }
     }
 
-    // --- 4. CREATE ORDER ---
+    // --- CREATE ORDER DOCUMENT ---
     const orderDoc = {
       orderNumber,
       orderType: (orderType || 'takeaway').toLowerCase(),
@@ -211,14 +214,14 @@ router.post('/', async (req, res) => {
     } else {
       orderDoc.customer = {
         name: customerName || 'Guest',
-        phone: 'N/A',
+        phone: cleanPhone || 'N/A',
       };
     }
 
     const newOrder = new Order(orderDoc);
     await newOrder.save();
 
-    // Socket Emit to Kitchen / Live Screens
+    // Socket Emit
     const io = req.app.get('io');
     if (io) {
       io.emit('newOrder', newOrder);
@@ -230,10 +233,11 @@ router.post('/', async (req, res) => {
       customerData: customerObj,
     });
   } catch (err) {
-    console.error('❌ POST /api/orders CRASH ERROR:', err);
+    console.error('❌ POST /api/orders SERVER ERROR:', err);
     return res.status(500).json({
       success: false,
       message: err.message,
+      errorDetails: err.errors || err.stack || err
     });
   }
 });
