@@ -1,9 +1,13 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 
 // Models
 const Order = require('../models/Order');
 const Customer = require('../models/Customer');
+
+// Helper to check valid MongoDB ObjectId
+const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
 
 // 1. GET Customer Lookup by Phone
 router.get('/customer/:phone', async (req, res) => {
@@ -77,7 +81,7 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// 4. POST Create New Order (CRASH PROOF & SANITIZED)
+// 4. POST Create New Order (100% BULLETPROOF & SAFE)
 router.post('/', async (req, res) => {
   try {
     const {
@@ -98,84 +102,90 @@ router.post('/', async (req, res) => {
       paymentMethod,
     } = req.body;
 
-    // 🔥 DATA SANITIZER: Frontend ke bade objects ko clean format me lana
-    const sanitizedItems = (items || []).map(item => {
-      const productId = item.product?._id || (typeof item.product === 'string' ? item.product : null);
-      const productName = item.product?.name || item.productName || 'Item';
-      
+    // --- 1. SANITIZE ITEMS ---
+    const sanitizedItems = (items || []).map((item) => {
+      let rawProdId = item.product?._id || (typeof item.product === 'string' ? item.product : null);
+      let validProdId = (rawProdId && isValidObjectId(rawProdId)) ? rawProdId : null;
+      let pName = item.product?.name || item.productName || 'Item';
+
       let crustData = null;
       if (item.crust) {
-        if (typeof item.crust === 'object') {
-          crustData = { _id: item.crust._id, name: item.crust.name };
-        } else {
-          crustData = { name: String(item.crust) };
-        }
+        let crustName = typeof item.crust === 'object' ? (item.crust.name || '') : String(item.crust);
+        crustData = crustName ? { name: crustName } : null;
       }
 
-      const addonsData = (item.addons || []).map(a => {
-        if (typeof a === 'object') return { _id: a._id, name: a.name };
+      let addonsList = (item.addons || []).map((a) => {
+        if (typeof a === 'object') return { name: a.name || '' };
         return { name: String(a) };
       });
 
       return {
-        product: productId,
-        productName: productName,
-        size: item.size || 'single',
+        product: validProdId,
+        productName: pName,
+        size: item.size || 'regular',
         crust: crustData,
         crustPrice: Number(item.crustPrice) || 0,
-        addons: addonsData,
+        addons: addonsList,
         addonsTotal: Number(item.addonsTotal) || 0,
         qty: Number(item.qty) || 1,
         basePrice: Number(item.basePrice) || 0,
-        comboSelections: item.comboSelections || []
+        comboSelections: Array.isArray(item.comboSelections) ? item.comboSelections : [],
       };
     });
 
-    // Order Number Generate Karein
+    // --- 2. GENERATE ORDER NUMBER ---
     const count = await Order.countDocuments();
     const orderNumber = `ORD-${101 + count}`;
 
-    // Reward Coins Calculate Karein (₹50 = 1 coin)
-    const rewardCoinsEarned = Math.floor((grandTotal || 0) / 50);
+    // --- 3. REWARD COINS & CUSTOMER HANDLING ---
+    const safeGrandTotal = Number(grandTotal) || 0;
+    const rewardCoinsEarned = Math.floor(safeGrandTotal / 50);
 
-    // Save/Update Customer Info
-    let customerData = { name: 'Guest', phone: 'N/A' };
-    if (customerPhone && customerPhone.length >= 10) {
-      const cleanPhone = customerPhone.replace(/[^0-9]/g, '').slice(-10);
-      const finalAddress = customerAddress || deliveryAddress || '';
-
-      let customer = await Customer.findOne({ phone: cleanPhone });
-      if (customer) {
-        customer.name = customerName || customer.name;
-        if (finalAddress) customer.address = finalAddress;
-        customer.totalOrders = (customer.totalOrders || 0) + 1;
-        customer.totalSpent = (customer.totalSpent || 0) + (grandTotal || 0);
-        customer.rewardCoins = Math.max(0, (customer.rewardCoins || 0) - (rewardCoinsUsed || 0) + rewardCoinsEarned);
-        await customer.save();
-      } else {
-        customer = await Customer.create({
-          phone: cleanPhone,
-          name: customerName || 'Guest',
-          address: finalAddress,
-          totalOrders: 1,
-          totalSpent: grandTotal || 0,
-          rewardCoins: rewardCoinsEarned,
-        });
-      }
-
-      customerData = {
-        _id: customer._id,
-        phone: customer.phone,
-        name: customer.name,
-        rewardCoins: customer.rewardCoins,
-      };
+    let customerObj = null;
+    let cleanPhone = String(customerPhone || '').replace(/[^0-9]/g, '');
+    if (cleanPhone.length >= 10) {
+      cleanPhone = cleanPhone.slice(-10);
+    } else {
+      cleanPhone = null;
     }
 
-    const newOrder = new Order({
+    if (cleanPhone) {
+      try {
+        const finalAddress = customerAddress || deliveryAddress || '';
+        let existingCustomer = await Customer.findOne({ phone: cleanPhone });
+
+        if (existingCustomer) {
+          if (customerName && customerName !== 'Guest') existingCustomer.name = customerName;
+          if (finalAddress) existingCustomer.address = finalAddress;
+          existingCustomer.totalOrders = (existingCustomer.totalOrders || 0) + 1;
+          existingCustomer.totalSpent = (existingCustomer.totalSpent || 0) + safeGrandTotal;
+          existingCustomer.rewardCoins = Math.max(
+            0,
+            (existingCustomer.rewardCoins || 0) - (Number(rewardCoinsUsed) || 0) + rewardCoinsEarned
+          );
+          await existingCustomer.save();
+          customerObj = existingCustomer;
+        } else {
+          existingCustomer = await Customer.create({
+            phone: cleanPhone,
+            name: customerName || 'Guest',
+            address: finalAddress,
+            totalOrders: 1,
+            totalSpent: safeGrandTotal,
+            rewardCoins: rewardCoinsEarned,
+          });
+          customerObj = existingCustomer;
+        }
+      } catch (custErr) {
+        console.error("Customer Save Warning:", custErr.message);
+      }
+    }
+
+    // --- 4. CREATE ORDER ---
+    const orderDoc = {
       orderNumber,
-      orderType: orderType || 'dine-in',
-      customer: customerData,
-      customerPhone: customerPhone || 'N/A',
+      orderType: (orderType || 'takeaway').toLowerCase(),
+      customerPhone: cleanPhone || 'N/A',
       deliveryAddress: deliveryAddress || '',
       items: sanitizedItems,
       subtotal: Number(subtotal) || 0,
@@ -186,23 +196,45 @@ router.post('/', async (req, res) => {
       serviceCharge: Number(serviceCharge) || 0,
       deliveryCharge: Number(deliveryCharge) || 0,
       gstAmount: Number(gstAmount) || 0,
-      grandTotal: Number(grandTotal) || 0,
-      paymentMethod: paymentMethod || 'cash',
+      grandTotal: safeGrandTotal,
+      paymentMethod: (paymentMethod || 'cash').toLowerCase(),
       status: 'new',
-    });
+    };
 
+    if (customerObj) {
+      orderDoc.customer = {
+        _id: customerObj._id,
+        phone: customerObj.phone,
+        name: customerObj.name,
+        rewardCoins: customerObj.rewardCoins,
+      };
+    } else {
+      orderDoc.customer = {
+        name: customerName || 'Guest',
+        phone: 'N/A',
+      };
+    }
+
+    const newOrder = new Order(orderDoc);
     await newOrder.save();
 
-    // Socket Emit to Live Screens & Kitchen
+    // Socket Emit to Kitchen / Live Screens
     const io = req.app.get('io');
     if (io) {
       io.emit('newOrder', newOrder);
     }
 
-    res.status(201).json({ success: true, order: newOrder, customerData });
+    return res.status(201).json({
+      success: true,
+      order: newOrder,
+      customerData: customerObj,
+    });
   } catch (err) {
-    console.error("❌ CREATE ORDER ERROR:", err);
-    res.status(500).json({ success: false, message: err.message });
+    console.error('❌ POST /api/orders CRASH ERROR:', err);
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
   }
 });
 
