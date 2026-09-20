@@ -1,13 +1,13 @@
 /**
- * Custom WhatsApp Gateway Sender (Native Node.js - No External Package Required)
- * @param {string} phone - Customer 10-digit mobile number
- * @param {object} order - Order object containing details
+ * Custom WhatsApp Gateway Sender (Powerstext API)
  */
 async function sendDirectWhatsAppMessage(phone, order) {
   try {
     let cleanPhone = String(phone || '').replace(/[^0-9]/g, '');
+    
+    // 🔥 ALWAYS ENSURE 10 DIGIT NUMBER HAS "91" PREFIX FOR POWERSTEXT
     if (cleanPhone.length >= 10) {
-      cleanPhone = cleanPhone.slice(-10); // Exact 10 digits
+      cleanPhone = '91' + cleanPhone.slice(-10); // e.g. 918004181488
     } else {
       console.log('⚠️ WhatsApp Skipped: Invalid phone number ->', phone);
       return;
@@ -42,10 +42,9 @@ ${trackerUrl}
     const authenticKey = '35315065726665637450697a7a615748415450503130301765611474';
     const encodedMessage = encodeURIComponent(messageText);
 
-    // Client's HTTP Gateway API URL
+    // Powerstext API URL with 91 Prefix
     const apiUrl = `http://wapp.powerstext.in/http-tokenkeyapi.php?authentic-key=${authenticKey}&route=1&number=${cleanPhone}&message=${encodedMessage}`;
 
-    // Native Node.js Fetch Call (No axios required!)
     const response = await fetch(apiUrl);
     const responseData = await response.text();
     console.log(`✅ Direct WhatsApp Gateway Response for ${cleanPhone}:`, responseData);
