@@ -1,5 +1,5 @@
 /**
- * Powerstext WhatsApp API Helper (POST Method with Form-UrlEncoded Body)
+ * Powerstext WhatsApp API Helper (Master Fix with URL Query + Body Fallback)
  */
 async function sendDirectWhatsAppMessage(phone, order) {
   try {
@@ -42,26 +42,19 @@ ${trackerUrl}
 
     const authenticKey = process.env.POWERSTEXT_KEY || '35315065726665637450697a7a615748415450503130301765611474';
     const routeId = process.env.POWERSTEXT_ROUTE || '1';
+    const encodedMessage = encodeURIComponent(messageText);
 
-    // 🔥 FORM-URLENCODED DATA AS PER CLIENT DOCS
-    const formData = new URLSearchParams();
-    formData.append('authentic-key', authenticKey);
-    formData.append('tokenkey', authenticKey);
-    formData.append('routeid', routeId);
-    formData.append('number', cleanPhone);
-    formData.append('message', messageText);
+    // 🔥 URL Query String including both authentic-key AND routeid
+    const apiUrl = `http://wapp.powerstext.in/http-tokenkeyapi.php?authentic-key=${authenticKey}&tokenkey=${authenticKey}&routeid=${routeId}&route=${routeId}&number=${cleanPhone}&message=${encodedMessage}`;
 
-    const apiUrl = 'http://wapp.powerstext.in/http-tokenkeyapi.php';
+    console.log(`🚀 [WhatsApp Helper] Sending Request to Powerstext for ${cleanPhone}...`);
 
-    console.log(`🚀 [WhatsApp Helper] Sending POST request to Powerstext for ${cleanPhone}...`);
-
-    // POST Request
+    // POST Request with URL Parameters
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      body: formData
+      }
     });
 
     const responseData = await response.text();
