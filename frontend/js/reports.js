@@ -1,4 +1,4 @@
-// 🔥 APNA RENDER BACKEND URL YAHAN LIKHO (Bina aakhiri slash '/')
+// 🔥 APNA RENDER BACKEND URL YAHAN LIKHO
 const RENDER_BACKEND_URL = "https://perfect-pizza-pos.onrender.com"; 
 
 window.SOCKET_URL = (window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1'))
@@ -8,59 +8,45 @@ window.SOCKET_URL = (window.location.origin.includes('localhost') || window.loca
 window.API_URL = `${window.SOCKET_URL}/api`;
 
 const API_URL = window.API_URL;
-const SOCKET_URL = window.SOCKET_URL;
-
 let token = localStorage.getItem('token');
 let user = null;
 
 try {
   const userStr = localStorage.getItem('user');
-  if (userStr && userStr !== 'undefined') {
-    user = JSON.parse(userStr);
-  }
-} catch (e) {
-  localStorage.clear();
-}
+  if (userStr && userStr !== 'undefined') user = JSON.parse(userStr);
+} catch (e) { localStorage.clear(); }
 
 if (!token || !user) {
   localStorage.clear();
   window.location.href = 'index.html';
 }
 
-// --- SECURITY & ROLE ACCESS GUARD ---
-const currentPage = window.location.pathname.split('/').pop();
-
-if (user.role === 'kitchen' && !currentPage.includes('kitchen.html')) {
-  window.location.href = 'kitchen.html'; 
-}
-
 if (user.role === 'cashier') {
-  const adminPages = ['menu-manager.html', 'reports.html', 'settings.html'];
-  if (adminPages.some(page => currentPage.includes(page))) {
-    alert('⛔ Access Denied: Only Admins can view this page.');
-    window.location.href = 'pos.html';
-  }
+  alert('⛔ Access Denied: Only Admins can view reports.');
+  window.location.href = 'pos.html';
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  if (user && user.role === 'cashier') {
-    document.querySelectorAll('a[href="menu-manager.html"], a[href="reports.html"], a[href="settings.html"]').forEach(btn => {
-      btn.style.display = 'none';
-    });
-  }
-  const userNameEl = document.getElementById('userName');
-  if (userNameEl && user) userNameEl.innerText = `👤 ${user.name} (${user.role})`;
-});
 // ------------------------------------
+// Helper: Format Date to YYYY-MM-DD
+// ------------------------------------
+function formatDate(d) {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
 
-function setFilter(type, event) {
+// ------------------------------------
+// Preset Button Logic (Yesterday, Today, etc)
+// ------------------------------------
+function setPreset(type, event) {
   document.querySelectorAll('.btn-preset').forEach(b => b.classList.remove('active'));
   
   if (event && event.currentTarget) {
     event.currentTarget.classList.add('active');
   } else if (type === 'today') {
-    // If reset is clicked, activate today button
-    document.querySelector('.btn-preset[onclick*="today"]').classList.add('active');
+    const todayBtn = document.querySelector('.btn-preset');
+    if (todayBtn) todayBtn.classList.add('active');
   }
 
   const today = new Date();
@@ -68,7 +54,7 @@ function setFilter(type, event) {
   let end = new Date();
 
   if (type === 'today') {
-    // start & end are today
+    // start and end are today
   } else if (type === 'yesterday') {
     start.setDate(today.getDate() - 1);
     end.setDate(today.getDate() - 1);
@@ -79,26 +65,29 @@ function setFilter(type, event) {
     start = new Date(today.getFullYear(), today.getMonth(), 1);
   }
 
-  const startEl = document.getElementById('startDate');
-  const endEl = document.getElementById('endDate');
-  if (startEl) startEl.value = formatDate(start);
-  if (endEl) endEl.value = formatDate(end);
+  document.getElementById('startDate').value = formatDate(start);
+  document.getElementById('endDate').value = formatDate(end);
 
   fetchReports();
 }
 
-function formatDate(date) {
-  return date.toISOString().split('T')[0];
-}
+document.addEventListener('DOMContentLoaded', () => {
+  setPreset('today', null);
+});
 
+// ------------------------------------
+// Fetch Data from API
+// ------------------------------------
 async function fetchReports() {
-  const startDateEl = document.getElementById('startDate');
-  const endDateEl = document.getElementById('endDate');
+  const startDate = document.getElementById('startDate').value;
+  const endDate = document.getElementById('endDate').value;
+  const tbody = document.getElementById('reportBody');
+  const tfoot = document.getElementById('reportFoot');
   
-  if (!startDateEl || !endDateEl) return;
-  
-  const startDate = startDateEl.value;
-  const endDate = endDateEl.value;
+  if (!startDate || !endDate) return alert("Please select both dates");
+
+  tbody.innerHTML = '<tr><td colspan="9" class="loader"><i class="fa-solid fa-spinner fa-spin"></i> Fetching data...</td></tr>';
+  tfoot.style.display = 'none';
 
   try {
     const res = await fetch(`${API_URL}/reports/summary?startDate=${startDate}&endDate=${endDate}`, {
@@ -106,102 +95,88 @@ async function fetchReports() {
     });
     
     if (!res.ok) throw new Error('Failed to fetch report');
-
     const data = await res.json();
-    renderReportData(data);
+    
+    renderTable(data.dailyBreakdown || []);
 
   } catch (err) {
-    alert(err.message);
+    console.error(err);
+    tbody.innerHTML = `<tr><td colspan="9" style="color:red; text-align:center; padding:20px;">Error: ${err.message}</td></tr>`;
   }
 }
 
-function renderReportData(data) {
-  const setTxt = (id, val) => {
-    const el = document.getElementById(id);
-    if (el) el.innerText = val;
-  };
+// ------------------------------------
+// Render Table & Totals
+// ------------------------------------
+function renderTable(dailyData) {
+  const tbody = document.getElementById('reportBody');
+  const tfoot = document.getElementById('reportFoot');
 
-  // 1. KPIs
-  setTxt('valTotalSales', `₹${(data.totalSales || 0).toFixed(2)}`);
-  setTxt('valTotalOrders', data.totalOrders || 0);
-  setTxt('valAvgOrder', `Avg: ₹${(data.averageOrderValue || 0).toFixed(2)} / order`);
-  setTxt('valGst', `₹${(data.totalGst || 0).toFixed(2)}`);
-  
-  // NEW: Cancelled KPI
-  setTxt('valCancelledAmount', `₹${(data.totalCancelledAmount || 0).toFixed(2)}`);
-  setTxt('valCancelledOrders', `${data.totalCancelledOrders || 0} Orders Cancelled`);
-
-  // 2. Payment Breakdown
-  setTxt('valUpi', `₹${(data.paymentSplit?.upi || 0).toFixed(2)}`);
-  setTxt('valCash', `₹${(data.paymentSplit?.cash || 0).toFixed(2)}`);
-  setTxt('valCard', `₹${(data.paymentSplit?.card || 0).toFixed(2)}`);
-
-  // 3. Order Type Breakdown
-  setTxt('valTypeDelivery', `${data.orderTypeSplit?.delivery || 0} orders`);
-  setTxt('valTypeTakeaway', `${data.orderTypeSplit?.takeaway || 0} orders`);
-  setTxt('valTypeDinein', `${data.orderTypeSplit?.['dine-in'] || 0} orders`);
-
-  // 4. NEW: Daily Summary Table (From Screenshot)
-  const dailyBody = document.getElementById('dailySummaryBody');
-  if (dailyBody) {
-    if (!data.dailyBreakdown || data.dailyBreakdown.length === 0) {
-      dailyBody.innerHTML = '<tr><td colspan="7" class="text-center">No sales data for selected period</td></tr>';
-    } else {
-      dailyBody.innerHTML = data.dailyBreakdown.map(day => `
-        <tr>
-          <td><b>${day.date}</b></td>
-          <td><span style="background:#10b981; color:white; padding:2px 8px; border-radius:12px; font-size:12px;">${day.orders}</span></td>
-          <td>₹${(day.subTotal || 0).toFixed(2)}</td>
-          <td>₹${(day.tax || 0).toFixed(2)}</td>
-          <td>₹${(day.grossSales || 0).toFixed(2)}</td>
-          <td class="text-danger">₹${(day.cancelledAmount || 0).toFixed(2)}</td>
-          <td class="text-success">₹${(day.netSales || 0).toFixed(2)}</td>
-        </tr>
-      `).join('');
-    }
-  }
-
-  // 5. Top Products Table
-  const tbody = document.getElementById('topProductsBody');
-  if (!tbody) return;
-
-  if (!data.topProducts || data.topProducts.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="4" class="text-center">No sales recorded for this period</td></tr>';
+  if (dailyData.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:20px;">No sales data found for selected period.</td></tr>';
+    tfoot.style.display = 'none';
     return;
   }
 
-  tbody.innerHTML = data.topProducts.map((p, idx) => `
+  let html = '';
+  let totals = {
+    orders: 0, subTotal: 0, discount: 0, tax: 0, charges: 0, gross: 0, returns: 0, net: 0
+  };
+
+  dailyData.forEach(day => {
+    totals.orders += day.orders;
+    totals.subTotal += day.subTotal;
+    totals.discount += day.discount;
+    totals.tax += day.tax;
+    totals.charges += day.charges;
+    totals.gross += day.grossSales;
+    totals.returns += day.cancelledAmount;
+    totals.net += day.netSales;
+
+    html += `
+      <tr class="data-row">
+        <td><b>${day.date}</b></td>
+        <td><span class="badge-orders">${day.orders}</span></td>
+        <td>₹${day.subTotal.toFixed(2)}</td>
+        <td class="val-discount">₹${day.discount.toFixed(2)}</td>
+        <td>₹${day.tax.toFixed(2)}</td>
+        <td>₹${day.charges.toFixed(2)}</td>
+        <td>₹${day.grossSales.toFixed(2)}</td>
+        <td class="val-returns">₹${day.cancelledAmount.toFixed(2)}</td>
+        <td class="val-net">₹${day.netSales.toFixed(2)}</td>
+      </tr>
+    `;
+  });
+
+  tbody.innerHTML = html;
+
+  tfoot.innerHTML = `
     <tr>
-      <td><b>#${idx + 1}</b></td>
-      <td><b>${p.name}</b></td>
-      <td>${p.qty} pcs</td>
-      <td style="color:#06A94D; font-weight:700;">₹${p.revenue.toFixed(2)}</td>
+      <td>TOTAL</td>
+      <td><span class="badge-orders">${totals.orders}</span></td>
+      <td>₹${totals.subTotal.toFixed(2)}</td>
+      <td class="val-discount">₹${totals.discount.toFixed(2)}</td>
+      <td>₹${totals.tax.toFixed(2)}</td>
+      <td>₹${totals.charges.toFixed(2)}</td>
+      <td>₹${totals.gross.toFixed(2)}</td>
+      <td class="val-returns">₹${totals.returns.toFixed(2)}</td>
+      <td class="val-net">₹${totals.net.toFixed(2)}</td>
     </tr>
-  `).join('');
+  `;
+  tfoot.style.display = 'table-footer-group';
+}
+
+function searchTable() {
+  const input = document.getElementById("searchInput").value.toLowerCase();
+  const rows = document.querySelectorAll(".data-row");
+
+  rows.forEach(row => {
+    const dateText = row.cells[0].innerText.toLowerCase();
+    row.style.display = dateText.includes(input) ? "" : "none";
+  });
 }
 
 function logout() {
   localStorage.clear();
   window.location.href = 'index.html';
 }
-
-// ========== NIGHT MODE ==========
-function applyNightMode() {
-  const on = localStorage.getItem('nightMode') === '1';
-  document.body.classList.toggle('night-mode', on);
-  const btn = document.getElementById('nightModeBtn');
-  if (btn) btn.innerText = on ? '☀️ Day' : '🌙 Night';
-}
-
-function toggleNightMode() {
-  const on = localStorage.getItem('nightMode') === '1';
-  localStorage.setItem('nightMode', on ? '0' : '1');
-  applyNightMode();
-}
-
-// page load
-document.addEventListener('DOMContentLoaded', applyNightMode);
-applyNightMode();
-
-// Init default today
-setFilter('today', null);

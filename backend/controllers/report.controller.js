@@ -5,32 +5,30 @@ const Order = require('../models/Order');
 // @access  Private (Admin / Super-Admin)
 const getSummaryReport = async (req, res) => {
   try {
-    const branchId = req.user?.branch?._id || req.user?.branch;
-    const { startDate, endDate } = req.query;
+    let filter = {};
 
-    let baseFilter = {};
-    if (branchId) {
-      baseFilter.branch = branchId;
+    if (req.user && req.user.branch) {
+      const branchId = req.user.branch._id || req.user.branch;
+      if (branchId) filter.branch = branchId;
     }
 
-    // ---- Date Range in IST (India Standard Time) ----
-    let start, end;
+    const { startDate, endDate } = req.query;
 
+    let start, end;
     if (startDate && endDate) {
+      // Force Indian Standard Time (+05:30)
       start = new Date(`${startDate}T00:00:00.000+05:30`);
       end = new Date(`${endDate}T23:59:59.999+05:30`);
     } else {
-      // Default: Today in IST
       const now = new Date();
-      const indiaDateStr = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }); // YYYY-MM-DD
-      start = new Date(`${indiaDateStr}T00:00:00.000+05:30`);
-      end = new Date(`${indiaDateStr}T23:59:59.999+05:30`);
+      const istStr = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+      start = new Date(`${istStr}T00:00:00.000+05:30`);
+      end = new Date(`${istStr}T23:59:59.999+05:30`);
     }
 
-    baseFilter.createdAt = { $gte: start, $lte: end };
+    filter.createdAt = { $gte: start, $lte: end };
 
-    // Saare orders ek baar me laao
-    const allOrders = await Order.find(baseFilter);
+    const allOrders = await Order.find(filter).lean();
 
     let totalSales = 0;
     let totalOrders = 0;
@@ -42,12 +40,9 @@ const getSummaryReport = async (req, res) => {
     let totalCancelledOrders = 0;
     let totalCancelledAmount = 0;
 
-    let paymentSplit = { cash: 0, upi: 0, card: 0 };
-    let orderTypeSplit = { delivery: 0, takeaway: 0, 'dine-in': 0 };
-    let productSalesMap = {};
     const dailyMap = {};
 
-    // Helper: IST Format me Date Key banana
+    // Grouping helper with IST conversion
     const getISTDateInfo = (dateObj) => {
       const d = new Date(dateObj);
       const dateKey = d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
@@ -84,7 +79,7 @@ const getSummaryReport = async (req, res) => {
       const day = ensureDay(dateKey, label);
 
       const statusLower = String(order.status || '').toLowerCase().trim();
-      const isCancelled = statusLower === 'cancelled' || statusLower === 'canceled';
+      const isCancelled = ['cancelled', 'canceled', 'cancel', 'rejected'].includes(statusLower);
 
       const grand = Number(order.grandTotal) || 0;
       const gst = Number(order.gstAmount) || 0;
@@ -93,14 +88,12 @@ const getSummaryReport = async (req, res) => {
       const subTotal = Number(order.subTotal) || Math.max(grand - gst - delivery + discount, 0);
 
       if (isCancelled) {
-        // CANCELLED ORDER LOGIC
         totalCancelledOrders += 1;
         totalCancelledAmount += grand;
 
         day.cancelledOrders += 1;
         day.cancelledAmount += grand;
       } else {
-        // COMPLETED / ACTIVE ORDER LOGIC
         totalOrders += 1;
         totalSales += grand;
         totalGst += gst;
@@ -108,35 +101,6 @@ const getSummaryReport = async (req, res) => {
         totalDelivery += delivery;
         totalSubTotal += subTotal;
 
-        // Payment Split
-        const pm = (order.paymentMethod || 'cash').toLowerCase().trim();
-        if (paymentSplit[pm] !== undefined) {
-          paymentSplit[pm] += grand;
-        } else {
-          paymentSplit.cash += grand;
-        }
-
-        // Order Type Split
-        const ot = (order.orderType || 'takeaway').toLowerCase().trim();
-        if (orderTypeSplit[ot] !== undefined) {
-          orderTypeSplit[ot] += 1;
-        }
-
-        // Top Products
-        (order.items || []).forEach((item) => {
-          const name = item.product?.name || item.productName || 'Item';
-          const qty = Number(item.qty) || 1;
-          const unitPrice = (Number(item.basePrice) || 0) + (Number(item.crustPrice) || 0) + (Number(item.addonsTotal) || 0);
-          const revenue = unitPrice * qty;
-
-          if (!productSalesMap[name]) {
-            productSalesMap[name] = { qty: 0, revenue: 0 };
-          }
-          productSalesMap[name].qty += qty;
-          productSalesMap[name].revenue += revenue;
-        });
-
-        // Day Row Stats
         day.orders += 1;
         day.subTotal += subTotal;
         day.tax += gst;
@@ -147,16 +111,6 @@ const getSummaryReport = async (req, res) => {
       }
     });
 
-    // Top Products Array
-    const topProducts = Object.keys(productSalesMap)
-      .map((name) => ({
-        name,
-        qty: productSalesMap[name].qty,
-        revenue: Number(productSalesMap[name].revenue.toFixed(2)),
-      }))
-      .sort((a, b) => b.qty - a.qty);
-
-    // Daily Breakdown Array
     const dailyBreakdown = Object.values(dailyMap)
       .sort((a, b) => (a.dateKey < b.dateKey ? 1 : -1))
       .map((d) => ({
@@ -177,21 +131,8 @@ const getSummaryReport = async (req, res) => {
       totalOrders,
       averageOrderValue: totalOrders ? Math.round(totalSales / totalOrders) : 0,
       totalGst: Number(totalGst.toFixed(2)),
-      totalDiscount: Number(totalDiscount.toFixed(2)),
-      totalDelivery: Number(totalDelivery.toFixed(2)),
-      totalSubTotal: Number(totalSubTotal.toFixed(2)),
-
       totalCancelledOrders,
       totalCancelledAmount: Number(totalCancelledAmount.toFixed(2)),
-
-      paymentSplit: {
-        cash: Number(paymentSplit.cash.toFixed(2)),
-        upi: Number(paymentSplit.upi.toFixed(2)),
-        card: Number(paymentSplit.card.toFixed(2)),
-      },
-      orderTypeSplit,
-
-      topProducts,
       dailyBreakdown,
     });
   } catch (error) {
