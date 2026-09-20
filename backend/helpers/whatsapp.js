@@ -3,13 +3,14 @@
  */
 async function sendDirectWhatsAppMessage(phone, order) {
   try {
+    console.log(`📱 [WhatsApp Helper] Called for Phone: "${phone}"`);
+
     let cleanPhone = String(phone || '').replace(/[^0-9]/g, '');
-    
-    // 🔥 ALWAYS ENSURE 10 DIGIT NUMBER HAS "91" PREFIX FOR POWERSTEXT
+
     if (cleanPhone.length >= 10) {
-      cleanPhone = '91' + cleanPhone.slice(-10); // e.g. 918004181488
+      cleanPhone = '91' + cleanPhone.slice(-10); // India Prefix
     } else {
-      console.log('⚠️ WhatsApp Skipped: Invalid phone number ->', phone);
+      console.log(`⚠️ [WhatsApp Helper] Skipped: Phone "${phone}" is invalid or less than 10 digits.`);
       return;
     }
 
@@ -17,7 +18,7 @@ async function sendDirectWhatsAppMessage(phone, order) {
     const amount = order.grandTotal || 0;
     const trackerUrl = `https://perfect-pizza-pos.netlify.app/track.html?id=${order._id}`;
 
-    // WhatsApp Message Content
+    // Message Text
     const messageText = `🙏 Thank You for Ordering from *Perfect Pizza!* 🍕
 
 Dear *${name}*,
@@ -42,15 +43,17 @@ ${trackerUrl}
     const authenticKey = '35315065726665637450697a7a615748415450503130301765611474';
     const encodedMessage = encodeURIComponent(messageText);
 
-    // Powerstext API URL with 91 Prefix
     const apiUrl = `http://wapp.powerstext.in/http-tokenkeyapi.php?authentic-key=${authenticKey}&route=1&number=${cleanPhone}&message=${encodedMessage}`;
+
+    console.log(`🚀 [WhatsApp Helper] Sending request to Powerstext API for ${cleanPhone}...`);
 
     const response = await fetch(apiUrl);
     const responseData = await response.text();
-    console.log(`✅ Direct WhatsApp Gateway Response for ${cleanPhone}:`, responseData);
+
+    console.log(`📩 [WhatsApp Helper] Response from Powerstext (${cleanPhone}):`, responseData);
 
   } catch (error) {
-    console.error('❌ WhatsApp Gateway API Error:', error.message);
+    console.error('❌ [WhatsApp Helper] Error:', error.message);
   }
 }
 
