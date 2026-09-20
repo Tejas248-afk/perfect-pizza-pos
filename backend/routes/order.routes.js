@@ -2,14 +2,10 @@ const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
 
-// Models
 const Order = require('../models/Order');
 const Customer = require('../models/Customer');
 
-// Helper to check valid MongoDB ObjectId
-const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
-
-// 1. GET Customer Lookup by Phone
+// 1. GET Customer Lookup
 router.get('/customer/:phone', async (req, res) => {
   try {
     let phone = String(req.params.phone || '').replace(/[^0-9]/g, '');
@@ -43,12 +39,11 @@ router.get('/customer/:phone', async (req, res) => {
       previousOrders,
     });
   } catch (err) {
-    console.error("Customer Lookup Error:", err);
     return res.status(500).json({ found: false, message: err.message });
   }
 });
 
-// 2. GET All Orders (Today's Orders)
+// 2. GET All Orders
 router.get('/', async (req, res) => {
   try {
     const { today } = req.query;
@@ -65,12 +60,11 @@ router.get('/', async (req, res) => {
     const orders = await Order.find(query).sort({ createdAt: -1 });
     res.json(orders);
   } catch (err) {
-    console.error("Get Orders Error:", err);
     res.status(500).json({ message: err.message });
   }
 });
 
-// 3. GET Single Order by ID
+// 3. GET Single Order
 router.get('/:id', async (req, res) => {
   try {
     const order = await Order.findById(req.params.id);
@@ -81,12 +75,11 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// 4. POST Create New Order (SUPER SAFE & DETAILED ERROR LOGGING)
+// 4. POST Create Order
 router.post('/', async (req, res) => {
   try {
-    console.log("📥 Incoming Order Body:", JSON.stringify(req.body, null, 2));
-
     const {
+      branch,
       orderType,
       customerPhone,
       customerName,
@@ -104,55 +97,18 @@ router.post('/', async (req, res) => {
       paymentMethod,
     } = req.body;
 
-    // --- SANITIZE ITEMS ---
-    const sanitizedItems = (items || []).map((item) => {
-      let rawProdId = item.product?._id || (typeof item.product === 'string' ? item.product : null);
-      let validProdId = (rawProdId && isValidObjectId(rawProdId)) ? rawProdId : new mongoose.Types.ObjectId();
-      let pName = item.product?.name || item.productName || 'Item';
+    const count = await Order.countDocuments().catch(() => 0);
+    const orderNumber = `ORD-${101 + count}`;
 
-      let crustData = null;
-      if (item.crust) {
-        let crustName = typeof item.crust === 'object' ? (item.crust.name || '') : String(item.crust);
-        if (crustName) crustData = { name: crustName };
-      }
-
-      let addonsList = (item.addons || []).map((a) => {
-        if (typeof a === 'object') return { name: a.name || '' };
-        return { name: String(a) };
-      });
-
-      return {
-        product: validProdId,
-        productName: pName,
-        size: item.size || 'regular',
-        crust: crustData,
-        crustPrice: Number(item.crustPrice) || 0,
-        addons: addonsList,
-        addonsTotal: Number(item.addonsTotal) || 0,
-        qty: Number(item.qty) || 1,
-        basePrice: Number(item.basePrice) || 0,
-        comboSelections: Array.isArray(item.comboSelections) ? item.comboSelections : [],
-      };
-    });
-
-    // --- UNIQUE ORDER NUMBER GENERATION ---
-    const dateSuffix = Date.now().toString().slice(-4);
-    const randomNum = Math.floor(100 + Math.random() * 900);
-    const orderNumber = `ORD-${dateSuffix}-${randomNum}`;
-
-    // --- REWARD COINS & CUSTOMER HANDLING ---
     const safeGrandTotal = Number(grandTotal) || 0;
     const rewardCoinsEarned = Math.floor(safeGrandTotal / 50);
 
-    let customerObj = null;
     let cleanPhone = String(customerPhone || '').replace(/[^0-9]/g, '');
-    if (cleanPhone.length >= 10) {
-      cleanPhone = cleanPhone.slice(-10);
-    } else {
-      cleanPhone = null;
-    }
+    if (cleanPhone.length >= 10) cleanPhone = cleanPhone.slice(-10);
+    else cleanPhone = 'N/A';
 
-    if (cleanPhone) {
+    let customerObj = { name: customerName || 'Guest', phone: cleanPhone };
+    if (cleanPhone !== 'N/A') {
       try {
         const finalAddress = customerAddress || deliveryAddress || '';
         let existingCustomer = await Customer.findOne({ phone: cleanPhone });
@@ -167,9 +123,13 @@ router.post('/', async (req, res) => {
             (existingCustomer.rewardCoins || 0) - (Number(rewardCoinsUsed) || 0) + rewardCoinsEarned
           );
           await existingCustomer.save();
-          customerObj = existingCustomer;
+          customerObj = {
+            id: existingCustomer._id,
+            name: existingCustomer.name,
+            phone: existingCustomer.phone
+          };
         } else {
-          existingCustomer = await Customer.create({
+          const newCust = await Customer.create({
             phone: cleanPhone,
             name: customerName || 'Guest',
             address: finalAddress,
@@ -177,20 +137,36 @@ router.post('/', async (req, res) => {
             totalSpent: safeGrandTotal,
             rewardCoins: rewardCoinsEarned,
           });
-          customerObj = existingCustomer;
+          customerObj = {
+            id: newCust._id,
+            name: newCust.name,
+            phone: newCust.phone
+          };
         }
       } catch (custErr) {
-        console.error("⚠️ Customer Save Warning:", custErr.message);
+        console.error("Customer save error:", custErr.message);
       }
     }
 
-    // --- CREATE ORDER DOCUMENT ---
-    const orderDoc = {
+    // Enum Safe values
+    const validOrderTypes = ['delivery', 'takeaway', 'dine-in'];
+    const safeOrderType = validOrderTypes.includes(String(orderType).toLowerCase()) 
+      ? String(orderType).toLowerCase() 
+      : 'dine-in';
+
+    const validPayMethods = ['cash', 'upi', 'card', 'pending'];
+    const safePayMethod = validPayMethods.includes(String(paymentMethod).toLowerCase()) 
+      ? String(paymentMethod).toLowerCase() 
+      : 'cash';
+
+    const newOrder = new Order({
+      branch: branch || null,
       orderNumber,
-      orderType: (orderType || 'takeaway').toLowerCase(),
-      customerPhone: cleanPhone || 'N/A',
+      orderType: safeOrderType,
+      customer: customerObj,
+      customerPhone: cleanPhone,
       deliveryAddress: deliveryAddress || '',
-      items: sanitizedItems,
+      items: items || [],
       subtotal: Number(subtotal) || 0,
       discount: Number(discount) || 0,
       rewardCoinsUsed: Number(rewardCoinsUsed) || 0,
@@ -200,32 +176,15 @@ router.post('/', async (req, res) => {
       deliveryCharge: Number(deliveryCharge) || 0,
       gstAmount: Number(gstAmount) || 0,
       grandTotal: safeGrandTotal,
-      paymentMethod: (paymentMethod || 'cash').toLowerCase(),
+      paymentMethod: safePayMethod,
+      paymentStatus: safePayMethod === 'pending' ? 'pending' : 'paid',
       status: 'new',
-    };
+    });
 
-    if (customerObj) {
-      orderDoc.customer = {
-        _id: customerObj._id,
-        phone: customerObj.phone,
-        name: customerObj.name,
-        rewardCoins: customerObj.rewardCoins,
-      };
-    } else {
-      orderDoc.customer = {
-        name: customerName || 'Guest',
-        phone: cleanPhone || 'N/A',
-      };
-    }
-
-    const newOrder = new Order(orderDoc);
     await newOrder.save();
 
-    // Socket Emit
     const io = req.app.get('io');
-    if (io) {
-      io.emit('newOrder', newOrder);
-    }
+    if (io) io.emit('newOrder', newOrder);
 
     return res.status(201).json({
       success: true,
@@ -233,31 +192,23 @@ router.post('/', async (req, res) => {
       customerData: customerObj,
     });
   } catch (err) {
-    console.error('❌ POST /api/orders SERVER ERROR:', err);
+    console.error('❌ ORDER CREATION ERROR:', err);
     return res.status(500).json({
       success: false,
       message: err.message,
-      errorDetails: err.errors || err.stack || err
     });
   }
 });
 
-// 5. PATCH Update Order Status
+// 5. PATCH Update Status
 router.patch('/:id/status', async (req, res) => {
   try {
     const { status } = req.body;
-    const order = await Order.findByIdAndUpdate(
-      req.params.id,
-      { status },
-      { new: true }
-    );
-
+    const order = await Order.findByIdAndUpdate(req.params.id, { status }, { new: true });
     if (!order) return res.status(404).json({ message: 'Order not found' });
 
     const io = req.app.get('io');
-    if (io) {
-      io.emit('orderUpdated', order);
-    }
+    if (io) io.emit('orderUpdated', order);
 
     res.json({ success: true, order });
   } catch (err) {
@@ -265,12 +216,11 @@ router.patch('/:id/status', async (req, res) => {
   }
 });
 
-// 6. PATCH Add KOT Items to Existing Order (Dine-in)
+// 6. PATCH Add KOT Items
 router.patch('/:id/add-items', async (req, res) => {
   try {
     const { items, subtotal, grandTotal } = req.body;
     const order = await Order.findById(req.params.id);
-
     if (!order) return res.status(404).json({ message: 'Order not found' });
 
     order.items.push(...items);
@@ -279,9 +229,7 @@ router.patch('/:id/add-items', async (req, res) => {
     await order.save();
 
     const io = req.app.get('io');
-    if (io) {
-      io.emit('orderUpdated', order);
-    }
+    if (io) io.emit('orderUpdated', order);
 
     res.json({ success: true, order });
   } catch (err) {

@@ -3,32 +3,36 @@ const mongoose = require('mongoose');
 const orderSchema = new mongoose.Schema(
   {
     branch: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Branch',
-      required: true,
+      type: mongoose.Schema.Types.Mixed, // Allows String "Kalyanpur" or Branch ObjectId
+      required: false,
+      default: null,
     },
     orderNumber: {
       type: String,
       required: true,
-      unique: true,
     },
     orderType: {
       type: String,
       enum: ['delivery', 'takeaway', 'dine-in'],
+      default: 'dine-in',
       required: true,
     },
 
     // Reference to Dine-in Table
     table: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Table',
+      type: mongoose.Schema.Types.Mixed,
       default: null,
     },
 
     customer: {
-      name: String,
-      phone: String,
-      id: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer' },
+      name: { type: String, default: 'Guest' },
+      phone: { type: String, default: 'N/A' },
+      id: { type: mongoose.Schema.Types.Mixed, default: null },
+    },
+
+    customerPhone: {
+      type: String,
+      default: 'N/A',
     },
 
     deliveryAddress: {
@@ -44,6 +48,7 @@ const orderSchema = new mongoose.Schema(
     subtotal: {
       type: Number,
       required: true,
+      default: 0,
     },
     discount: {
       type: Number,
@@ -61,7 +66,10 @@ const orderSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
-        serviceCharge: { type: Number, default: 0 },
+    serviceCharge: {
+      type: Number,
+      default: 0,
+    },
     gstAmount: {
       type: Number,
       default: 0,
@@ -69,11 +77,12 @@ const orderSchema = new mongoose.Schema(
     grandTotal: {
       type: Number,
       required: true,
+      default: 0,
     },
 
     paymentMethod: {
       type: String,
-      enum: ['cash', 'upi', 'card', 'pending'], // Added pending for dine-in running orders
+      enum: ['cash', 'upi', 'card', 'pending'],
       default: 'cash',
     },
     paymentStatus: {
@@ -94,8 +103,8 @@ const orderSchema = new mongoose.Schema(
     },
 
     createdBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
     },
     completedAt: {
       type: Date,
@@ -104,4 +113,4 @@ const orderSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-module.exports = mongoose.model('Order', orderSchema);
+module.exports = mongoose.models.Order || mongoose.model('Order', orderSchema);
