@@ -804,6 +804,8 @@ document.getElementById('payBtn')?.addEventListener('click', async () => {
 
       document.querySelector('.cart-panel')?.classList.remove('open');
       document.getElementById('cartOverlay')?.classList.remove('open');
+    }
+    
   } catch (error) {
     alert(`Error: ${error.message}`);
   } finally {

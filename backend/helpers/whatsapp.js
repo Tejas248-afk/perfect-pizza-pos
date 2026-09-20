@@ -1,7 +1,5 @@
-const axios = require('axios');
-
 /**
- * Custom WhatsApp Gateway Sender
+ * Custom WhatsApp Gateway Sender (Native Node.js - No External Package Required)
  * @param {string} phone - Customer 10-digit mobile number
  * @param {object} order - Order object containing details
  */
@@ -47,9 +45,10 @@ ${trackerUrl}
     // Client's HTTP Gateway API URL
     const apiUrl = `http://wapp.powerstext.in/http-tokenkeyapi.php?authentic-key=${authenticKey}&route=1&number=${cleanPhone}&message=${encodedMessage}`;
 
-    // Async Non-blocking Request
-    const response = await axios.get(apiUrl);
-    console.log(`✅ Direct WhatsApp Gateway Response for ${cleanPhone}:`, response.data);
+    // Native Node.js Fetch Call (No axios required!)
+    const response = await fetch(apiUrl);
+    const responseData = await response.text();
+    console.log(`✅ Direct WhatsApp Gateway Response for ${cleanPhone}:`, responseData);
 
   } catch (error) {
     console.error('❌ WhatsApp Gateway API Error:', error.message);
