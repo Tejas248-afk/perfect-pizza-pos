@@ -83,6 +83,9 @@ function connectSocket() {
   socket = io(SOCKET_URL, {
     transports: ['websocket', 'polling'],
     reconnection: true,
+    reconnectionDelay: 1000,      // हर 1 सेकंड में रीकनेक्ट करने की कोशिश करेगा
+    reconnectionDelayMax: 5000,   // अधिकतम 5 सेकंड का गैप लेगा
+    reconnectionAttempts: Infinity // हमेशा कोशिश करता रहेगा
   });
 
   socket.on('connect', () => {
@@ -91,12 +94,12 @@ function connectSocket() {
   });
 
   socket.on('disconnect', () => {
-    setConnectionStatus(false, 'Offline');
+    setConnectionStatus(false, 'Offline (Reconnecting...)');
     console.log('❌ Orders page socket disconnected');
   });
 
   socket.on('connect_error', (err) => {
-    setConnectionStatus(false, 'Offline');
+    setConnectionStatus(false, 'Offline (Connecting...)');
     console.error('Socket Error:', err.message);
   });
 
@@ -118,10 +121,14 @@ function connectSocket() {
   });
 }
 
-// ---------- Load from API ----------
-async function loadOrders() {
+// ---------- Load from API (With Silent Mode Support) ----------
+async function loadOrders(silent = false) {
   const list = document.getElementById('ordersList');
-  if (list) list.innerHTML = '<div class="loading">Loading...</div>';
+  
+  // Loader सिर्फ पहली बार दिखेगा, बैकग्राउंड रिफ्रेश (silent) में नहीं ताकि स्क्रीन फ्लिकर न करे
+  if (list && !silent && allOrders.length === 0) {
+    list.innerHTML = '<div class="loading">Loading...</div>';
+  }
 
   try {
     const res = await fetch(`${API_URL}/orders?today=true`, {
@@ -129,10 +136,25 @@ async function loadOrders() {
     });
     if (!res.ok) throw new Error('Failed to load orders');
 
-    allOrders = await res.json();
+    const newOrders = await res.json();
+
+    // चेक करें कि क्या कोई नया ऑर्डर आया है जो पहले लिस्ट में नहीं था
+    if (silent && allOrders.length > 0) {
+      const existingIds = new Set(allOrders.map(o => o._id));
+      const hasNew = newOrders.some(o => !existingIds.has(o._id));
+      
+      if (hasNew) {
+        playTripleBeep();
+        flashPageTitle();
+      }
+    }
+
+    allOrders = newOrders;
     renderOrders();
   } catch (err) {
-    if (list) {
+    console.error("Fetch Error:", err.message);
+    // अगर बिल्कुल भी ऑर्डर्स नहीं हैं, तभी स्क्रीन पर एरर दिखाएं
+    if (list && allOrders.length === 0) {
       list.innerHTML = `<div class="empty-state">Error: ${err.message}</div>`;
     }
   }
@@ -412,5 +434,11 @@ function toggleNightMode() {
 // ---------- Init ----------
 document.addEventListener('DOMContentLoaded', applyNightMode);
 connectSocket();
-loadOrders();
-setInterval(loadOrders, 60000);
+
+// पहली बार लोडर के साथ डेटा खींचेगा
+loadOrders(false);
+
+// हर 10 सेकंड में बैकग्राउंड में साइलेंटली आर्डर्स रिफ्रेश करेगा 
+setInterval(() => {
+  loadOrders(true);
+}, 10000);

@@ -16,11 +16,11 @@ let user = null;
 
 try {
   const userStr = localStorage.getItem('user');
-  if (userStr && userStr !== 'undefined') {
+  if (userStr && userStr !== 'undefined' && userStr !== 'null') {
     user = JSON.parse(userStr);
   }
 } catch (e) {
-  localStorage.clear();
+  console.error("User parse error", e);
 }
 
 if (!token || !user) {
@@ -31,11 +31,11 @@ if (!token || !user) {
 // --- SECURITY & ROLE ACCESS GUARD ---
 const currentPage = window.location.pathname.split('/').pop();
 
-if (user.role === 'kitchen' && !currentPage.includes('kitchen.html')) {
+if (user && user.role === 'kitchen' && !currentPage.includes('kitchen.html')) {
   window.location.href = 'kitchen.html';
 }
 
-if (user.role === 'cashier') {
+if (user && user.role === 'cashier') {
   const adminPages = ['menu-manager.html', 'reports.html', 'settings.html'];
   if (adminPages.some((page) => currentPage.includes(page))) {
     alert('⛔ Access Denied: Only Admins can view this page.');
@@ -44,7 +44,7 @@ if (user.role === 'cashier') {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  if (user.role === 'cashier') {
+  if (user && user.role === 'cashier') {
     document
       .querySelectorAll('a[href="menu-manager.html"], a[href="reports.html"], a[href="settings.html"]')
       .forEach((btn) => {
@@ -52,7 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
       });
   }
   const userNameEl = document.getElementById('userName');
-  if (userNameEl) userNameEl.innerText = `👤 ${user.name} (${user.role})`;
+  if (userNameEl && user) userNameEl.innerText = `👤 ${user.name} (${user.role})`;
 });
 
 // ------------------------------------
@@ -149,7 +149,6 @@ function renderProducts(categoryId, searchQuery = '') {
   let products = menuData.products.filter((p) => {
     const catOk = q ? true : p.category === categoryId;
     if (!catOk) return false;
-
     if (!q) return true;
 
     const name = (p.name || '').toLowerCase();
@@ -174,20 +173,11 @@ function renderProducts(categoryId, searchQuery = '') {
     let tagsHtml = '';
     if (p.tags && p.tags.length > 0) {
       tagsHtml = `<div style="display:flex; gap:5px; margin-bottom:8px; flex-wrap:wrap;">
-        ${p.tags
-          .map(
-            (t) =>
-              `<span style="background:#FEF08A; color:#92400E; padding:2px 6px; border-radius:4px; font-size:9px; font-weight:700; text-transform:uppercase;">${t}</span>`
-          )
-          .join('')}
+        ${p.tags.map((t) => `<span style="background:#FEF08A; color:#92400E; padding:2px 6px; border-radius:4px; font-size:9px; font-weight:700; text-transform:uppercase;">${t}</span>`).join('')}
       </div>`;
     }
 
-    let imgHtml = '';
-    if (p.image) {
-      imgHtml = `<img src="${p.image}" style="width:100%; height:100px; object-fit:cover; border-radius:8px; margin-bottom:10px;" alt="${p.name}">`;
-    }
-
+    let imgHtml = p.image ? `<img src="${p.image}" style="width:100%; height:100px; object-fit:cover; border-radius:8px; margin-bottom:10px;" alt="${p.name}">` : '';
     let vegIcon = p.isVeg !== false ? '🟩' : '🟥';
 
     card.innerHTML = `
@@ -195,15 +185,9 @@ function renderProducts(categoryId, searchQuery = '') {
         ${imgHtml}
         ${tagsHtml}
         <h4>${vegIcon} ${p.name} ${p.isSpicy ? '<span class="tag-spicy">🌶️</span>' : ''}</h4>
-        ${
-          p.description
-            ? `<p style="display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;">${p.description}</p>`
-            : ''
-        }
+        ${p.description ? `<p style="display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;">${p.description}</p>` : ''}
       </div>
-      <div class="price">₹${displayPrice} ${
-      p.hasSizes ? '<small style="font-size:10px; color:#64748B;">onwards</small>' : ''
-    }</div>
+      <div class="price">₹${displayPrice} ${p.hasSizes ? '<small style="font-size:10px; color:#64748B;">onwards</small>' : ''}</div>
     `;
 
     card.onclick = () => openModal(p);
@@ -211,7 +195,7 @@ function renderProducts(categoryId, searchQuery = '') {
   });
 }
 
-// --- 2. Customer Lookup (Name + Address Auto Fill) ---
+// --- 2. Customer Lookup & Auto Fill ---
 let lookupTimer = null;
 document.getElementById('customerPhone')?.addEventListener('input', (e) => {
   const phone = e.target.value.trim();
@@ -266,23 +250,30 @@ async function searchCustomer(phone) {
     document.getElementById('ccSpent').innerText = c.totalSpent || 0;
 
     const prevBox = document.getElementById('ccPrevOrders');
-    if (!data.previousOrders || data.previousOrders.length === 0) {
-      prevBox.innerHTML = '<div class="cc-prev-empty">No previous orders found</div>';
-    } else {
-      prevBox.innerHTML = data.previousOrders
-        .map((o) => {
-          const d = new Date(o.createdAt).toLocaleDateString('en-IN');
-          return `<div class="cc-prev-item"><span><b>${o.orderNumber}</b> (${o.orderType})</span><span>₹${o.grandTotal} · ${d}</span></div>`;
-        })
-        .join('');
+    const countEl = document.getElementById('prevOrdersCount');
+    const ordersList = data.previousOrders || [];
+
+    if (countEl) countEl.innerText = String(ordersList.length);
+    resetPrevOrdersCollapse(); // Always collapse on new load
+
+    if (prevBox) {
+      if (ordersList.length === 0) {
+        prevBox.innerHTML = '<div class="cc-prev-empty">No previous orders found</div>';
+      } else {
+        prevBox.innerHTML = ordersList
+          .map((o) => {
+            const d = new Date(o.createdAt).toLocaleDateString('en-IN');
+            return `<div class="cc-prev-item"><span><b>${o.orderNumber}</b> (${o.orderType})</span><span>₹${o.grandTotal} · ${d}</span></div>`;
+          })
+          .join('');
+      }
     }
 
     card.classList.remove('hidden');
 
     const redeemToggle = document.getElementById('redeemCoinsToggle');
     if (redeemToggle) {
-      const canRedeem = (c.rewardCoins || 0) >= 20;
-      redeemToggle.disabled = !canRedeem;
+      redeemToggle.disabled = (c.rewardCoins || 0) < 20;
     }
     document.getElementById('availableCoinsText').innerText = c.rewardCoins || 0;
     calculateTotals();
@@ -294,8 +285,10 @@ async function searchCustomer(phone) {
 function resetCustomerInfo() {
   currentCustomer = null;
   document.getElementById('customerCard')?.classList.add('hidden');
+  resetPrevOrdersCollapse();
+  
   const prevBox = document.getElementById('ccPrevOrders');
-  if(prevBox) prevBox.innerHTML = '';
+  if (prevBox) prevBox.innerHTML = '';
 
   const nameInput = document.getElementById('customerName');
   const addrInput = document.getElementById('customerAddress');
@@ -308,8 +301,45 @@ function resetCustomerInfo() {
     toggle.disabled = true;
   }
   const availText = document.getElementById('availableCoinsText');
-  if(availText) availText.innerText = '0';
+  if (availText) availText.innerText = '0';
   calculateTotals();
+}
+
+// ========== COLLAPSIBLE PREVIOUS ORDERS LOGIC ==========
+window.togglePrevOrders = function() {
+  const box = document.getElementById('ccPrevOrdersBox');
+  const btn = document.getElementById('prevOrdersToggle');
+  const plus = document.getElementById('prevOrdersPlus');
+  if (!box || !btn) return;
+
+  const isOpen = box.classList.contains('open');
+
+  if (isOpen) {
+    box.classList.remove('open');
+    box.classList.add('collapsed');
+    btn.classList.remove('open');
+    if (plus) plus.innerText = '+';
+  } else {
+    box.classList.remove('collapsed');
+    box.classList.add('open');
+    btn.classList.add('open');
+    if (plus) plus.innerText = '−';
+  }
+};
+
+function resetPrevOrdersCollapse() {
+  const box = document.getElementById('ccPrevOrdersBox');
+  const btn = document.getElementById('prevOrdersToggle');
+  const plus = document.getElementById('prevOrdersPlus');
+  const countEl = document.getElementById('prevOrdersCount');
+
+  if (box) {
+    box.classList.remove('open');
+    box.classList.add('collapsed');
+  }
+  if (btn) btn.classList.remove('open');
+  if (plus) plus.innerText = '+';
+  if (countEl) countEl.innerText = '0';
 }
 
 // --- 3. Customization Modal ---
@@ -387,22 +417,22 @@ function openModal(product) {
   updateModalPrice();
 }
 
-function closeModal() {
+window.closeModal = function() {
   document.getElementById('itemModal').classList.add('hidden');
 }
 
-function updateModalState(key, value) {
+window.updateModalState = function(key, value) {
   modalState[key] = value;
   updateModalPrice();
 }
 
-function toggleAddon(id, isChecked) {
+window.toggleAddon = function(id, isChecked) {
   if (isChecked) modalState.addons.push(id);
   else modalState.addons = modalState.addons.filter((a) => a !== id);
   updateModalPrice();
 }
 
-function updateModalQty(change) {
+window.updateModalQty = function(change) {
   const newQty = modalState.qty + change;
   if (newQty >= 1) {
     modalState.qty = newQty;
@@ -455,7 +485,7 @@ function addToCartDirect(product) {
   renderCart();
 }
 
-function addToCart() {
+window.addToCart = function() {
   const { product, size, crustId, addons, qty } = modalState;
 
   let comboSelections = [];
@@ -534,16 +564,16 @@ function renderCart() {
   calculateTotals();
 }
 
-function updateCartQty(index, change) {
+window.updateCartQty = function(index, change) {
   cart[index].qty += change;
   if (cart[index].qty <= 0) cart.splice(index, 1);
   renderCart();
-}
+};
 
-function removeCartItem(index) {
+window.removeCartItem = function(index) {
   cart.splice(index, 1);
   renderCart();
-}
+};
 
 // --- 5. Table Existing Order Loader ---
 async function loadExistingOrder() {
@@ -620,6 +650,21 @@ function toggleDeliveryFields() {
   calculateTotals();
 }
 
+// Edit Charges Popup logic
+window.openChargesModal = function () {
+  const modal = document.getElementById('chargesModal');
+  if (!modal) return;
+  modal.classList.remove('hidden');
+  setTimeout(() => document.getElementById('discountInput')?.focus(), 50);
+};
+
+window.closeChargesModal = function () {
+  const modal = document.getElementById('chargesModal');
+  if (!modal) return;
+  modal.classList.add('hidden');
+  calculateTotals();
+};
+
 function calculateTotals() {
   let cartSubtotal = 0;
   cart.forEach((item) => {
@@ -684,7 +729,13 @@ function calculateTotals() {
   window._rewardCoinsUsed = coinsToUse;
   window._rewardCoinsValue = coinsDiscount;
 
-  syncFloatingCart();
+  // Live mini preview inside main cart panel update
+  const pd = document.getElementById('previewDiscount');
+  const pc = document.getElementById('previewCoins');
+  const ps = document.getElementById('previewService');
+  if (pd) pd.innerText = `Disc: ₹${discount}`;
+  if (pc) pc.innerText = `Coins: -₹${coinsDiscount}`;
+  if (ps) ps.innerText = `Svc: ₹${serviceCharge}`;
 }
 
 document.getElementById('discountInput')?.addEventListener('input', calculateTotals);
@@ -697,6 +748,14 @@ document.getElementById('redeemCoinsToggle')?.addEventListener('change', calcula
 document
   .querySelectorAll('input[name="orderType"]')
   .forEach((r) => r.addEventListener('change', toggleDeliveryFields));
+
+// Charges Modal Controls
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeChargesModal();
+});
+document.getElementById('chargesModal')?.addEventListener('click', (e) => {
+  if (e.target.id === 'chargesModal') closeChargesModal();
+});
 
 // --- 7. Pay / KOT Actions ---
 document.getElementById('payBtn')?.addEventListener('click', async () => {
@@ -783,29 +842,40 @@ document.getElementById('payBtn')?.addEventListener('click', async () => {
       alert('Table Started & KOT Sent! 👨‍🍳');
       window.location.href = 'tables.html';
     } else {
-            // Order Success
       const res = await fetch(`${API_URL}/orders`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify(orderData),
       });
       const data = await res.json();
 
       if (!res.ok) throw new Error(data.message || 'Order failed');
 
-      // 1. Thermal Printer Bill Print
+      // 🔥 ONLY Print Bill (WhatsApp backend automatically bhejega)
       generatePrintReceipt(data.order, data.customerData);
       window.print();
 
-      // 2. Reset Cart & UI (Backend automatically sends WhatsApp message)
+      // Reset
       cart = [];
+      const cp = document.getElementById('customerPhone'); if(cp) cp.value = '';
+      const cn = document.getElementById('customerName'); if(cn) cn.value = '';
+      if (custAddrEl) custAddrEl.value = '';
+      const di = document.getElementById('discountInput'); if(di) di.value = '0';
+      const sci = document.getElementById('serviceChargeInput'); if(sci) sci.value = '0';
+      const dci = document.getElementById('deliveryChargeInput'); if(dci) dci.value = '0';
+      const gtgl = document.getElementById('gstToggle'); if(gtgl) gtgl.checked = false;
+      const paySelect = document.getElementById('paymentMethod'); if(paySelect) paySelect.value = 'cash';
+      
+      const dineInRadio = document.querySelector('input[value="dine-in"]');
+      if (dineInRadio) dineInRadio.checked = true;
+      toggleDeliveryFields();
+      
       resetCustomerInfo();
       renderCart();
-
-      document.querySelector('.cart-panel')?.classList.remove('open');
-      document.getElementById('cartOverlay')?.classList.remove('open');
     }
-    
   } catch (error) {
     alert(`Error: ${error.message}`);
   } finally {
@@ -998,94 +1068,10 @@ function generatePrintReceipt(order, customer) {
   `;
 }
 
-// 🔥 INSTANT WHATSAPP SENDER (Rasta 1)
-function sendWhatsAppBill(order) {
-  if (!order) return;
-  const phoneVal = order.customerPhone || order.customer?.phone;
-  if (!phoneVal || phoneVal === 'N/A') return;
-
-  const cleanPhone = String(phoneVal).replace(/[^0-9]/g, '').slice(-10);
-  if (cleanPhone.length < 10) return;
-
-  const name = order.customerName || order.customer?.name || 'Valued Customer';
-  const dateObj = new Date(order.createdAt || Date.now());
-  const date = dateObj.toLocaleDateString('en-IN');
-  const time = dateObj.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
-
-  const amount = order.grandTotal || 0;
-  const orderType = (order.orderType || 'Takeaway').toUpperCase();
-  const rewardPoints = order.rewardCoinsEarned || 0;
-  const invoiceLink = `${window.location.origin}/track.html?id=${order._id}`;
-
-  const message = `🙏 Thank You for Ordering from *Perfect Pizza!* 🍕
-
-Dear *${name}*,
-Your delicious order has been received! 🍕🛵
-Thank you for choosing *Perfect Pizza*. ❤️
-
-🧾 *Invoice Details*
-━━━━━━━━━━━━━━
-👤 *Customer:* ${name}
-🧾 *Invoice No:* ${order.orderNumber}
-📅 *Date:* ${date} ${time}
-
-💰 *Total Payable:* ₹${amount}
-✅ *Paid Amount:* ₹${amount}
-🛵 *Order Type:* ${orderType}
-🎁 *Reward Points Earned:* ${rewardPoints}
-━━━━━━━━━━━━━━
-
-🔥 *MORE SAVINGS ONLINE!* 🔥
-🎟️ *Exclusive Online Discounts*
-🍕 *Best Offers Every Day*
-🎁 *Earn Reward Points*
-💰 *Use Rewards on Future Orders*
-
-🌐 *Order Online:* https://perfectpizzas.in/
-
-🧾 *Track Your Order Live:*
-${invoiceLink}
-
-📞 *Contact:* 9889229198
-📍 *Perfect Pizza*
-Singhpur Chauraha, Bithoor Rd, Kalyanpur, Kanpur
-
-✨ *Thanks again!*
-🍕 *Hot, Fresh & Perfect Every Time!*`;
-
-  const whatsappUrl = `https://wa.me/91${cleanPhone}?text=${encodeURIComponent(message)}`;
-  
-  // Instant open WhatsApp
-  window.open(whatsappUrl, '_blank');
-}
-
-function logout() {
+window.logout = function() {
   localStorage.clear();
   window.location.href = 'index.html';
-}
-
-// =========================================
-// SLIDE-OUT CART
-// =========================================
-function toggleCart() {
-  document.querySelector('.cart-panel')?.classList.toggle('open');
-  document.getElementById('cartOverlay')?.classList.toggle('open');
-}
-
-function syncFloatingCart() {
-  const countEl = document.getElementById('cartItemCount');
-  const totalEl = document.getElementById('cartTotal');
-
-  if (countEl && totalEl) {
-    const itemsCount = countEl.innerText.replace(/[^0-9]/g, '');
-    const floatCount = document.getElementById('floatItemCount');
-    const floatTotal = document.getElementById('floatTotal');
-    if (floatCount) floatCount.innerText = itemsCount === '' ? '0' : itemsCount;
-
-    const totalAmount = totalEl.innerText.replace(/[^0-9.]/g, '');
-    if (floatTotal) floatTotal.innerText = totalAmount === '' ? '0' : totalAmount;
-  }
-}
+};
 
 // =========================================
 // NIGHT MODE
@@ -1097,16 +1083,16 @@ function applyNightMode() {
   if (btn) btn.innerText = on ? '☀️ Day' : '🌙 Night';
 }
 
-function toggleNightMode() {
+window.toggleNightMode = function() {
   const on = localStorage.getItem('nightMode') === '1';
   localStorage.setItem('nightMode', on ? '0' : '1');
   applyNightMode();
-}
+};
 
 // =========================================
 // PRODUCT SEARCH BAR
 // =========================================
-function onProductSearch() {
+window.onProductSearch = function() {
   const input = document.getElementById('productSearch');
   const clearBtn = document.getElementById('clearSearchBtn');
   const q = input ? input.value : '';
@@ -1121,9 +1107,9 @@ function onProductSearch() {
   } else {
     renderProducts(currentCategory || menuData.categories[0]?._id, '');
   }
-}
+};
 
-function clearProductSearch() {
+window.clearProductSearch = function() {
   const input = document.getElementById('productSearch');
   if (input) input.value = '';
   const clearBtn = document.getElementById('clearSearchBtn');
@@ -1138,7 +1124,7 @@ function clearProductSearch() {
   } else {
     renderProducts(currentCategory, '');
   }
-}
+};
 
 document.getElementById('productSearch')?.addEventListener('input', onProductSearch);
 

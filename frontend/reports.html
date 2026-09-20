@@ -7,6 +7,24 @@
   <link rel="stylesheet" href="css/style.css">
   <link rel="stylesheet" href="css/reports.css">
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    /* New styles for Cancelled Card and Table adjustments */
+    .kpi-card.danger { border-bottom: 4px solid #ef5350; background: #fff5f5; }
+    .kpi-card.danger .kpi-title { color: #d32f2f; }
+    .kpi-card.danger .kpi-value { color: #c62828; }
+    .night-mode .kpi-card.danger { background: #3b1717; border-color: #f44336; }
+    .night-mode .kpi-card.danger .kpi-title { color: #ff8a80; }
+    .night-mode .kpi-card.danger .kpi-value { color: #ffcdd2; }
+    
+    .mt-4 { margin-top: 2rem; }
+    .text-danger { color: #ef5350 !important; font-weight: 600; }
+    .text-success { color: #4caf50 !important; font-weight: 600; }
+    
+    .filter-actions { display: flex; gap: 10px; }
+    .btn-reset { background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500; }
+    .btn-reset:hover { background: #e2e8f0; }
+    .night-mode .btn-reset { background: #334155; color: #f1f5f9; border-color: #475569; }
+  </style>
 </head>
 <body>
 
@@ -16,14 +34,15 @@
       <h2>Reports <small>Sales Analytics</small></h2>
     </div>
     <div class="user-info">
-  <a href="kitchen.html" target="_blank" class="btn-orders-nav btn-nav-dark">👨‍🍳 Kitchen</a>
-  <a href="tables.html" class="btn-orders-nav btn-nav-yellow">🪑 Tables</a>
-  <a href="menu-manager.html" class="btn-orders-nav" style="background:#8B5CF6;">📝 Menu</a>
-  <a href="orders.html" class="btn-orders-nav btn-nav-primary">📋 Live Orders</a>
-  <a href="pos.html" class="btn-orders-nav btn-nav-gray">← POS</a>
-  <a href="settings.html" class="btn-orders-nav" style="background:#475569;">⚙️ Settings</a>
-  <button onclick="logout()" class="btn-logout">Logout</button>
-</div>
+      <button id="nightModeBtn" onclick="toggleNightMode()" class="btn-orders-nav" style="background:#1e293b;">🌙 Night</button>
+      <a href="kitchen.html" target="_blank" class="btn-orders-nav btn-nav-dark">👨‍🍳 Kitchen</a>
+      <a href="tables.html" class="btn-orders-nav btn-nav-yellow">🪑 Tables</a>
+      <a href="menu-manager.html" class="btn-orders-nav" style="background:#8B5CF6;">📝 Menu</a>
+      <a href="orders.html" class="btn-orders-nav btn-nav-primary">📋 Live Orders</a>
+      <a href="pos.html" class="btn-orders-nav btn-nav-gray">← POS</a>
+      <a href="settings.html" class="btn-orders-nav" style="background:#475569;">⚙️ Settings</a>
+      <button onclick="logout()" class="btn-logout">Logout</button>
+    </div>
   </header>
 
   <div class="reports-container">
@@ -31,52 +50,79 @@
     <!-- Filter Bar -->
     <div class="filter-card">
       <div class="preset-buttons">
-        <button class="btn-preset active" onclick="setFilter('today')">Today</button>
-        <button class="btn-preset" onclick="setFilter('yesterday')">Yesterday</button>
-        <button class="btn-preset" onclick="setFilter('thisWeek')">This Week</button>
-        <button class="btn-preset" onclick="setFilter('thisMonth')">This Month</button>
+        <button class="btn-preset active" onclick="setFilter('today', event)">Today</button>
+        <button class="btn-preset" onclick="setFilter('yesterday', event)">Yesterday</button>
+        <button class="btn-preset" onclick="setFilter('thisWeek', event)">This Week</button>
+        <button class="btn-preset" onclick="setFilter('thisMonth', event)">This Month</button>
       </div>
 
       <div class="custom-date-range">
+        <span>From *</span>
         <input type="date" id="startDate">
-        <span>to</span>
+        <span>To *</span>
         <input type="date" id="endDate">
-        <button class="btn-apply" onclick="fetchReports()">Apply Filter</button>
+        <div class="filter-actions">
+          <button class="btn-apply" onclick="fetchReports()">Apply</button>
+          <button class="btn-reset" onclick="setFilter('today', null)">Reset</button>
+        </div>
       </div>
     </div>
 
     <!-- KPI Summary Cards -->
     <div class="kpi-grid">
       <div class="kpi-card primary">
-        <div class="kpi-title">TOTAL REVENUE</div>
+        <div class="kpi-title">NET SALES</div>
         <div class="kpi-value" id="valTotalSales">₹0</div>
-        <div class="kpi-sub">Net business collected</div>
+        <div class="kpi-sub">Actual revenue (After returns)</div>
       </div>
 
       <div class="kpi-card success">
-        <div class="kpi-title">TOTAL ORDERS</div>
+        <div class="kpi-title">COMPLETED ORDERS</div>
         <div class="kpi-value" id="valTotalOrders">0</div>
-        <div class="kpi-sub">Completed orders</div>
-      </div>
-
-      <div class="kpi-card info">
-        <div class="kpi-title">AVG ORDER VALUE</div>
-        <div class="kpi-value" id="valAvgOrder">₹0</div>
-        <div class="kpi-sub">Per bill average</div>
+        <div class="kpi-sub" id="valAvgOrder">Avg: ₹0 / order</div>
       </div>
 
       <div class="kpi-card warning">
-        <div class="kpi-title">TOTAL GST COLLECTED</div>
+        <div class="kpi-title">TOTAL TAX (GST)</div>
         <div class="kpi-value" id="valGst">₹0</div>
-        <div class="kpi-sub">Tax sum (5%)</div>
+        <div class="kpi-sub">Included in Gross</div>
+      </div>
+
+      <!-- NEW: Cancelled Orders Card -->
+      <div class="kpi-card danger">
+        <div class="kpi-title">CANCELLED / RETURNS</div>
+        <div class="kpi-value" id="valCancelledAmount">₹0</div>
+        <div class="kpi-sub" id="valCancelledOrders">0 Orders Cancelled</div>
+      </div>
+    </div>
+
+    <!-- Daily Sales Summary Table (Like Screenshot) -->
+    <div class="table-card mt-4">
+      <h3>📅 Daily Sales Summary</h3>
+      <div class="table-wrapper">
+        <table class="report-table">
+          <thead>
+            <tr>
+              <th>Period (Date)</th>
+              <th>Orders</th>
+              <th>Sub Total</th>
+              <th>Tax (GST)</th>
+              <th>Gross Sales</th>
+              <th class="text-danger">Returns (Cancelled)</th>
+              <th class="text-success">Net Sales</th>
+            </tr>
+          </thead>
+          <tbody id="dailySummaryBody">
+            <tr><td colspan="7" class="text-center">Loading data...</td></tr>
+          </tbody>
+        </table>
       </div>
     </div>
 
     <!-- Payment & Order Types Breakdown -->
-    <div class="analytics-grid">
-      
+    <div class="analytics-grid mt-4">
       <div class="analytics-card">
-        <h3>💳 Payment Mode Collection</h3>
+        <h3>💳 Payment Collection</h3>
         <div class="breakdown-list">
           <div class="breakdown-item">
             <span>UPI / Online ✅</span>
@@ -94,28 +140,27 @@
       </div>
 
       <div class="analytics-card">
-        <h3>📦 Order Type Breakdown</h3>
+        <h3>📦 Order Types</h3>
         <div class="breakdown-list">
           <div class="breakdown-item">
-            <span>🚚 Delivery Orders</span>
+            <span>🚚 Delivery</span>
             <strong id="valTypeDelivery">0</strong>
           </div>
           <div class="breakdown-item">
-            <span>🥡 Takeaway Orders</span>
+            <span>🥡 Takeaway</span>
             <strong id="valTypeTakeaway">0</strong>
           </div>
           <div class="breakdown-item">
-            <span>🪑 Dine-in Orders</span>
+            <span>🪑 Dine-in</span>
             <strong id="valTypeDinein">0</strong>
           </div>
         </div>
       </div>
-
     </div>
 
     <!-- Top Selling Products Table -->
-    <div class="table-card">
-      <h3>🍕 Top Selling Products & Revenue</h3>
+    <div class="table-card mt-4">
+      <h3>🍕 Top Selling Products</h3>
       <div class="table-wrapper">
         <table class="report-table">
           <thead>

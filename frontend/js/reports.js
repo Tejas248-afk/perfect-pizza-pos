@@ -30,12 +30,10 @@ if (!token || !user) {
 // --- SECURITY & ROLE ACCESS GUARD ---
 const currentPage = window.location.pathname.split('/').pop();
 
-// 1. Kitchen staff trying to access anything other than kitchen.html
 if (user.role === 'kitchen' && !currentPage.includes('kitchen.html')) {
   window.location.href = 'kitchen.html'; 
 }
 
-// 2. Cashier trying to access Admin pages
 if (user.role === 'cashier') {
   const adminPages = ['menu-manager.html', 'reports.html', 'settings.html'];
   if (adminPages.some(page => currentPage.includes(page))) {
@@ -44,7 +42,6 @@ if (user.role === 'cashier') {
   }
 }
 
-// 3. Hide Admin Buttons from UI for Cashier
 document.addEventListener('DOMContentLoaded', () => {
   if (user && user.role === 'cashier') {
     document.querySelectorAll('a[href="menu-manager.html"], a[href="reports.html"], a[href="settings.html"]').forEach(btn => {
@@ -56,9 +53,15 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 // ------------------------------------
 
-function setFilter(type) {
+function setFilter(type, event) {
   document.querySelectorAll('.btn-preset').forEach(b => b.classList.remove('active'));
-  if (event && event.currentTarget) event.currentTarget.classList.add('active');
+  
+  if (event && event.currentTarget) {
+    event.currentTarget.classList.add('active');
+  } else if (type === 'today') {
+    // If reset is clicked, activate today button
+    document.querySelector('.btn-preset[onclick*="today"]').classList.add('active');
+  }
 
   const today = new Date();
   let start = new Date();
@@ -113,28 +116,52 @@ async function fetchReports() {
 }
 
 function renderReportData(data) {
-  // KPIs
   const setTxt = (id, val) => {
     const el = document.getElementById(id);
     if (el) el.innerText = val;
   };
 
-  setTxt('valTotalSales', `₹${data.totalSales || 0}`);
+  // 1. KPIs
+  setTxt('valTotalSales', `₹${(data.totalSales || 0).toFixed(2)}`);
   setTxt('valTotalOrders', data.totalOrders || 0);
-  setTxt('valAvgOrder', `₹${data.averageOrderValue || 0}`);
-  setTxt('valGst', `₹${data.totalGst || 0}`);
+  setTxt('valAvgOrder', `Avg: ₹${(data.averageOrderValue || 0).toFixed(2)} / order`);
+  setTxt('valGst', `₹${(data.totalGst || 0).toFixed(2)}`);
+  
+  // NEW: Cancelled KPI
+  setTxt('valCancelledAmount', `₹${(data.totalCancelledAmount || 0).toFixed(2)}`);
+  setTxt('valCancelledOrders', `${data.totalCancelledOrders || 0} Orders Cancelled`);
 
-  // Payment Breakdown
-  setTxt('valUpi', `₹${data.paymentSplit?.upi || 0}`);
-  setTxt('valCash', `₹${data.paymentSplit?.cash || 0}`);
-  setTxt('valCard', `₹${data.paymentSplit?.card || 0}`);
+  // 2. Payment Breakdown
+  setTxt('valUpi', `₹${(data.paymentSplit?.upi || 0).toFixed(2)}`);
+  setTxt('valCash', `₹${(data.paymentSplit?.cash || 0).toFixed(2)}`);
+  setTxt('valCard', `₹${(data.paymentSplit?.card || 0).toFixed(2)}`);
 
-  // Order Type Breakdown
+  // 3. Order Type Breakdown
   setTxt('valTypeDelivery', `${data.orderTypeSplit?.delivery || 0} orders`);
   setTxt('valTypeTakeaway', `${data.orderTypeSplit?.takeaway || 0} orders`);
   setTxt('valTypeDinein', `${data.orderTypeSplit?.['dine-in'] || 0} orders`);
 
-  // Top Products Table
+  // 4. NEW: Daily Summary Table (From Screenshot)
+  const dailyBody = document.getElementById('dailySummaryBody');
+  if (dailyBody) {
+    if (!data.dailyBreakdown || data.dailyBreakdown.length === 0) {
+      dailyBody.innerHTML = '<tr><td colspan="7" class="text-center">No sales data for selected period</td></tr>';
+    } else {
+      dailyBody.innerHTML = data.dailyBreakdown.map(day => `
+        <tr>
+          <td><b>${day.date}</b></td>
+          <td><span style="background:#10b981; color:white; padding:2px 8px; border-radius:12px; font-size:12px;">${day.orders}</span></td>
+          <td>₹${(day.subTotal || 0).toFixed(2)}</td>
+          <td>₹${(day.tax || 0).toFixed(2)}</td>
+          <td>₹${(day.grossSales || 0).toFixed(2)}</td>
+          <td class="text-danger">₹${(day.cancelledAmount || 0).toFixed(2)}</td>
+          <td class="text-success">₹${(day.netSales || 0).toFixed(2)}</td>
+        </tr>
+      `).join('');
+    }
+  }
+
+  // 5. Top Products Table
   const tbody = document.getElementById('topProductsBody');
   if (!tbody) return;
 
@@ -148,7 +175,7 @@ function renderReportData(data) {
       <td><b>#${idx + 1}</b></td>
       <td><b>${p.name}</b></td>
       <td>${p.qty} pcs</td>
-      <td style="color:#06A94D; font-weight:700;">₹${p.revenue}</td>
+      <td style="color:#06A94D; font-weight:700;">₹${p.revenue.toFixed(2)}</td>
     </tr>
   `).join('');
 }
@@ -177,4 +204,4 @@ document.addEventListener('DOMContentLoaded', applyNightMode);
 applyNightMode();
 
 // Init default today
-setFilter('today');
+setFilter('today', null);

@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="css/pos.css">
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
-<body>
+<body class="pos-body">
 
   <!-- Top Navbar -->
   <header class="pos-header">
@@ -21,13 +21,13 @@
     </div>
     
     <div class="user-info">
-      <button class="btn-night-toggle" id="nightModeBtn" onclick="toggleNightMode()">🌙 Night</button>
       <a href="kitchen.html" target="_blank" class="btn-orders-nav btn-nav-dark">👨‍🍳 Kitchen</a>
       <a href="tables.html" class="btn-orders-nav btn-nav-yellow">🪑 Tables</a>
       <a href="menu-manager.html" class="btn-orders-nav" style="background:#8B5CF6;">📝 Menu</a>
       <a href="reports.html" class="btn-orders-nav btn-nav-blue">📊 Reports</a>
       <a href="settings.html" class="btn-orders-nav" style="background:#334155;">⚙️ Settings</a>
       <a href="orders.html" class="btn-orders-nav btn-nav-primary">📋 Live Orders</a>
+      <button id="nightModeBtn" class="btn-orders-nav btn-night-toggle" onclick="toggleNightMode()">🌙 Night</button>
       <span id="userName">👤 Cashier</span>
       <button onclick="logout()" class="btn-logout">Logout</button>
     </div>
@@ -41,70 +41,69 @@
       <input type="text" id="customerName" placeholder="👤 Name">
       <input type="text" id="customerAddress" placeholder="📍 Address" style="display:none; width: 250px;">
     </div>
-    <div class="order-type-selector">
-      <label><input type="radio" name="orderType" value="delivery" checked> 🚚 Delivery</label>
+        <div class="order-type-selector">
+      <label><input type="radio" name="orderType" value="delivery"> 🚚 Delivery</label>
       <label><input type="radio" name="orderType" value="takeaway"> 🥡 Takeaway</label>
-      <label><input type="radio" name="orderType" value="dine-in"> 🪑 Dine-in</label>
+      <label><input type="radio" name="orderType" value="dine-in" checked> 🪑 Dine-in</label>
     </div>
   </div>
 
-  <!-- Main POS Container -->
+  <!-- Main POS Container (3 Columns) -->
   <div class="pos-container">
     
-    <!-- Left: Categories -->
+    <!-- LEFT: Categories -->
     <aside class="categories-sidebar" id="categoriesList">
       <div class="loading">Loading...</div>
     </aside>
 
-    <!-- Center: Products Area -->
+    <!-- CENTER: Products Area -->
     <main class="products-area">
       
-      <!-- Customer Card + Previous Orders -->
-      <div id="customerCard" class="customer-card hidden">
-        <div class="customer-card-top">
-          <div class="cc-left">
-            <strong id="ccName">Customer</strong>
-            <span id="ccPhone" class="muted">98XXXXXXXX</span>
-          </div>
-          <div class="cc-stats">
-            <span class="badge-coin">🪙 <b id="ccCoins">0</b> Coins</span>
-            <span>📦 <b id="ccOrders">0</b> Orders</span>
-            <span>💰 ₹<b id="ccSpent">0</b></span>
-          </div>
-        </div>
+     <!-- Customer Card + Previous Orders -->
+<div id="customerCard" class="customer-card hidden">
+  <div class="customer-card-top">
+    <div class="cc-left">
+      <strong id="ccName">Customer</strong>
+      <span id="ccPhone" class="muted">98XXXXXXXX</span>
+    </div>
+    <div class="cc-stats">
+      <span class="badge-coin">🪙 <b id="ccCoins">0</b> Coins</span>
+      <span>📦 <b id="ccOrders">0</b> Orders</span>
+      <span>💰 ₹<b id="ccSpent">0</b></span>
+    </div>
+  </div>
 
-        <div class="cc-prev-wrap">
-          <div class="cc-prev-title">📜 Previous Orders (Last 5)</div>
-          <div id="ccPrevOrders" class="cc-prev-orders"></div>
-        </div>
-      </div>
-<!-- Product Search -->
-<div class="product-search-wrap">
-  <input
-    type="text"
-    id="productSearch"
-    placeholder="🔍 Search pizza, burger, combo..."
-    autocomplete="off"
-  >
-  <button type="button" class="btn-clear-search" id="clearSearchBtn" onclick="clearProductSearch()" title="Clear">✕</button>
+  <!-- Collapsible Previous Orders -->
+  <div class="cc-prev-wrap">
+    <button type="button" class="cc-prev-toggle" id="prevOrdersToggle" onclick="togglePrevOrders()">
+      <span class="cc-prev-toggle-left">
+        <span class="cc-plus" id="prevOrdersPlus">+</span>
+        <span class="cc-prev-title">📜 Previous Orders (Last 5)</span>
+      </span>
+      <span class="cc-prev-count" id="prevOrdersCount">0</span>
+    </button>
+
+    <div id="ccPrevOrdersBox" class="cc-prev-orders-box collapsed">
+      <div id="ccPrevOrders" class="cc-prev-orders"></div>
+    </div>
+  </div>
 </div>
 
-<!-- Products Grid -->
-<div class="products-grid" id="productsGrid"></div>
+      <!-- Product Search -->
+      <div class="product-search-wrap">
+        <input type="text" id="productSearch" placeholder="🔍 Search pizza, burger, combo..." autocomplete="off">
+        <button type="button" class="btn-clear-search" id="clearSearchBtn" onclick="clearProductSearch()" title="Clear">✕</button>
+      </div>
 
       <!-- Products Grid -->
       <div class="products-grid" id="productsGrid"></div>
     </main>
 
-    <!-- Right: Cart Panel (Ab ye Slide-out ban jayega) -->
+    <!-- RIGHT: Cart Panel (FIXED ON RIGHT SIDE) -->
     <aside class="cart-panel">
       <div class="cart-header">
         <h3>🛒 Current Order</h3>
-        <div style="display: flex; align-items: center; gap: 10px;">
-          <span class="item-count" id="cartItemCount">0 items</span>
-          <!-- CLOSE BUTTON ADDED HERE -->
-          <button class="btn-close-cart" onclick="toggleCart()">✕</button>
-        </div>
+        <span class="item-count" id="cartItemCount">0 items</span>
       </div>
 
       <div id="existingItemsContainer" style="display:none; background:#F8FAFC; padding:12px; border-bottom:1px solid #E2E8F0;">
@@ -119,29 +118,26 @@
         </div>
       </div>
 
-      <!-- PREMIUM CART SUMMARY -->
+            <!-- CART SUMMARY (COMPACT) -->
       <div class="cart-summary">
         <div class="summary-line">
           <span class="label">Subtotal</span>
           <span id="cartSubtotal" class="value font-bold">₹0</span>
         </div>
-        
-        <div class="summary-line">
-          <span class="label text-danger">Discount (₹)</span>
-          <input type="number" id="discountInput" value="0" min="0" class="mini-input">
-        </div>
-        
-        <div class="summary-line" id="coinsRow">
-          <label class="coins-label">
-            <input type="checkbox" id="redeemCoinsToggle" disabled>
-            🪙 Use Coins (<span id="availableCoinsText">0</span>)
-          </label>
-          <span id="cartCoinsDiscount" class="value text-success font-bold">-₹0</span>
+
+        <!-- One button for Discount / Coins / Service -->
+        <div class="summary-line charges-edit-row">
+          <span class="label">Charges & Discount</span>
+          <button type="button" class="btn-edit-charges" onclick="openChargesModal()">
+            ✏️ Edit
+          </button>
         </div>
 
-        <div class="summary-line" id="serviceRow">
-          <span class="label">Service Charge (₹)</span>
-          <input type="number" id="serviceChargeInput" value="0" min="0" class="mini-input">
+        <!-- Live mini preview -->
+        <div class="charges-preview" id="chargesPreview">
+          <span id="previewDiscount">Disc: ₹0</span>
+          <span id="previewCoins">Coins: -₹0</span>
+          <span id="previewService">Svc: ₹0</span>
         </div>
 
         <div class="summary-line" id="deliveryRow">
@@ -160,8 +156,8 @@
         <div class="summary-line payment-line">
           <span class="label font-bold">Payment</span>
           <select id="paymentMethod" class="select-input">
+            <option value="cash" selected>Cash 💵</option>
             <option value="upi">UPI ✅</option>
-            <option value="cash">Cash 💵</option>
             <option value="card">Card 💳</option>
           </select>
         </div>
@@ -200,15 +196,37 @@
 
   <!-- Hidden Print Container -->
   <div id="printReceipt" class="print-only"></div>
+    <!-- Charges / Discount / Coins Modal -->
+  <div class="modal-overlay hidden" id="chargesModal">
+    <div class="modal-content charges-modal">
+      <div class="modal-header">
+        <h3>✏️ Edit Charges</h3>
+        <button class="close-modal" onclick="closeChargesModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="label text-danger">Discount (₹)</label>
+          <input type="number" id="discountInput" value="0" min="0" class="full-input">
+        </div>
 
-  <!-- ================= NEW SLIDE-OUT CART ELEMENTS ================= -->
-  <!-- Background kala karne ke liye jab cart khule -->
-  <div class="cart-overlay" id="cartOverlay" onclick="toggleCart()"></div>
+        <div class="form-group coins-modal-row" id="coinsRow">
+          <label class="coins-label">
+            <input type="checkbox" id="redeemCoinsToggle" disabled>
+            🪙 Use Coins (<span id="availableCoinsText">0</span>)
+          </label>
+          <span id="cartCoinsDiscount" class="value text-success font-bold">-₹0</span>
+        </div>
 
-  <!-- Niche ka Floating Button -->
-  <button class="floating-cart-btn" id="floatingCartBtn" onclick="toggleCart()">
-    🛒 View Cart (<span id="floatItemCount">0</span>) - ₹<span id="floatTotal">0</span>
-  </button>
+        <div class="form-group">
+          <label class="label">Service Charge (₹)</label>
+          <input type="number" id="serviceChargeInput" value="0" min="0" class="full-input">
+        </div>
+      </div>
+      <div class="modal-footer charges-footer">
+        <button type="button" class="btn-charges-done" onclick="closeChargesModal()">Done</button>
+      </div>
+    </div>
+  </div>
 
   <script src="js/pos.js"></script>
 </body>
