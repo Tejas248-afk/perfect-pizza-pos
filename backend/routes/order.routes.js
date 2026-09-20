@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 
 const Order = require('../models/Order');
 const Customer = require('../models/Customer');
+const { sendDirectWhatsAppMessage } = require('../helpers/whatsapp');
 
 // 1. GET Customer Lookup
 router.get('/customer/:phone', async (req, res) => {
@@ -182,6 +183,10 @@ router.post('/', async (req, res) => {
     });
 
     await newOrder.save();
+    // 🔥 DIRECT AUTOMATIC WHATSAPP VIA POWERSTEXT API (NO BROWSER TAB)
+    if (cleanPhone && cleanPhone !== 'N/A') {
+      sendDirectWhatsAppMessage(cleanPhone, newOrder);
+    }
 
     const io = req.app.get('io');
     if (io) io.emit('newOrder', newOrder);

@@ -1,6 +1,6 @@
 // --- URLs & CONFIGURATION (DEPLOYMENT READY) ---
 // 🔥 APNA RENDER BACKEND URL YAHAN DALEIN (Bina aakhiri slash '/')
-const RENDER_BACKEND_URL = "https://perfect-pizza-pos.onrender.com"; // <-- Put your actual Render URL here
+const RENDER_BACKEND_URL = "https://perfect-pizza-pos.onrender.com"; 
 
 window.SOCKET_URL = (window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1'))
   ? 'http://localhost:5000'
@@ -120,6 +120,7 @@ async function fetchMenu() {
 
 function renderCategories() {
   const container = document.getElementById('categoriesList');
+  if (!container) return;
   container.innerHTML = '';
 
   menuData.categories.forEach((cat, index) => {
@@ -146,7 +147,6 @@ function renderProducts(categoryId, searchQuery = '') {
   const q = (searchQuery || '').trim().toLowerCase();
 
   let products = menuData.products.filter((p) => {
-    // category match (search empty ho to current category, search ho to all categories me dhoondho)
     const catOk = q ? true : p.category === categoryId;
     if (!catOk) return false;
 
@@ -157,9 +157,6 @@ function renderProducts(categoryId, searchQuery = '') {
     const tags = Array.isArray(p.tags) ? p.tags.join(' ').toLowerCase() : '';
     return name.includes(q) || desc.includes(q) || tags.includes(q);
   });
-
-  // optional: available only
-  // products = products.filter(p => p.isAvailable !== false);
 
   if (products.length === 0) {
     container.innerHTML = `
@@ -213,9 +210,10 @@ function renderProducts(categoryId, searchQuery = '') {
     container.appendChild(card);
   });
 }
+
 // --- 2. Customer Lookup (Name + Address Auto Fill) ---
 let lookupTimer = null;
-document.getElementById('customerPhone').addEventListener('input', (e) => {
+document.getElementById('customerPhone')?.addEventListener('input', (e) => {
   const phone = e.target.value.trim();
   clearTimeout(lookupTimer);
 
@@ -227,8 +225,8 @@ document.getElementById('customerPhone').addEventListener('input', (e) => {
 });
 
 function manualCustomerSearch() {
-  const phone = document.getElementById('customerPhone').value.trim();
-  if (phone.length === 10) searchCustomer(phone);
+  const phone = document.getElementById('customerPhone')?.value.trim();
+  if (phone && phone.length === 10) searchCustomer(phone);
   else alert('Please enter a valid 10-digit phone number');
 }
 
@@ -295,8 +293,9 @@ async function searchCustomer(phone) {
 
 function resetCustomerInfo() {
   currentCustomer = null;
-  document.getElementById('customerCard').classList.add('hidden');
-  document.getElementById('ccPrevOrders').innerHTML = '';
+  document.getElementById('customerCard')?.classList.add('hidden');
+  const prevBox = document.getElementById('ccPrevOrders');
+  if(prevBox) prevBox.innerHTML = '';
 
   const nameInput = document.getElementById('customerName');
   const addrInput = document.getElementById('customerAddress');
@@ -308,7 +307,8 @@ function resetCustomerInfo() {
     toggle.checked = false;
     toggle.disabled = true;
   }
-  document.getElementById('availableCoinsText').innerText = '0';
+  const availText = document.getElementById('availableCoinsText');
+  if(availText) availText.innerText = '0';
   calculateTotals();
 }
 
@@ -492,6 +492,7 @@ function addToCart() {
 
 function renderCart() {
   const container = document.getElementById('cartItems');
+  if(!container) return;
   container.innerHTML = '';
 
   const countEl = document.getElementById('cartItemCount');
@@ -574,13 +575,20 @@ async function loadExistingOrder() {
       .join('');
 
     if (existingOrderData.customer?.phone && existingOrderData.customer.phone !== 'N/A') {
-      document.getElementById('customerPhone').value = existingOrderData.customer.phone;
+      const phoneInput = document.getElementById('customerPhone');
+      if(phoneInput) phoneInput.value = existingOrderData.customer.phone;
       searchCustomer(existingOrderData.customer.phone);
     }
 
-    if (existingOrderData.discount)
-      document.getElementById('discountInput').value = existingOrderData.discount;
-    if (existingOrderData.gstAmount > 0) document.getElementById('gstToggle').checked = true;
+    if (existingOrderData.discount) {
+      const discInp = document.getElementById('discountInput');
+      if(discInp) discInp.value = existingOrderData.discount;
+    }
+      
+    if (existingOrderData.gstAmount > 0) {
+      const gstTgl = document.getElementById('gstToggle');
+      if(gstTgl) gstTgl.checked = true;
+    }
 
     calculateTotals();
   } catch (err) {
@@ -628,7 +636,7 @@ function calculateTotals() {
   }
 
   let totalSubtotal = cartSubtotal + existingSubtotal;
-  let discount = Number(document.getElementById('discountInput').value) || 0;
+  let discount = Number(document.getElementById('discountInput')?.value) || 0;
 
   let coinsDiscount = 0;
   let coinsToUse = 0;
@@ -646,7 +654,8 @@ function calculateTotals() {
     }
   }
 
-  document.getElementById('cartCoinsDiscount').innerText = `-₹${coinsDiscount}`;
+  const cDiscText = document.getElementById('cartCoinsDiscount');
+  if(cDiscText) cDiscText.innerText = `-₹${coinsDiscount}`;
 
   let serviceCharge = 0;
   const serviceInput = document.getElementById('serviceChargeInput');
@@ -661,14 +670,16 @@ function calculateTotals() {
   let taxableAmount = totalSubtotal - discount - coinsDiscount + serviceCharge;
   if (taxableAmount < 0) taxableAmount = 0;
 
-  let isGstOn = document.getElementById('gstToggle').checked;
+  const gstTgl = document.getElementById('gstToggle');
+  let isGstOn = gstTgl ? gstTgl.checked : false;
   let gstAmount = isGstOn ? taxableAmount * 0.05 : 0;
 
   let grandTotal = taxableAmount + deliveryCharge + gstAmount;
 
-  document.getElementById('cartSubtotal').innerText = `₹${totalSubtotal}`;
-  document.getElementById('cartGst').innerText = `₹${gstAmount.toFixed(2)}`;
-  document.getElementById('cartTotal').innerText = `₹${Math.round(grandTotal)}`;
+  const setTxt = (id, val) => { const el = document.getElementById(id); if(el) el.innerText = val; };
+  setTxt('cartSubtotal', `₹${totalSubtotal}`);
+  setTxt('cartGst', `₹${gstAmount.toFixed(2)}`);
+  setTxt('cartTotal', `₹${Math.round(grandTotal)}`);
 
   window._rewardCoinsUsed = coinsToUse;
   window._rewardCoinsValue = coinsDiscount;
@@ -676,29 +687,28 @@ function calculateTotals() {
   syncFloatingCart();
 }
 
-document.getElementById('discountInput').addEventListener('input', calculateTotals);
+document.getElementById('discountInput')?.addEventListener('input', calculateTotals);
 const srvInput = document.getElementById('serviceChargeInput');
 if (srvInput) srvInput.addEventListener('input', calculateTotals);
 const delInput = document.getElementById('deliveryChargeInput');
 if (delInput) delInput.addEventListener('input', calculateTotals);
-document.getElementById('gstToggle').addEventListener('change', calculateTotals);
-document.getElementById('redeemCoinsToggle').addEventListener('change', calculateTotals);
+document.getElementById('gstToggle')?.addEventListener('change', calculateTotals);
+document.getElementById('redeemCoinsToggle')?.addEventListener('change', calculateTotals);
 document
   .querySelectorAll('input[name="orderType"]')
   .forEach((r) => r.addEventListener('change', toggleDeliveryFields));
 
 // --- 7. Pay / KOT Actions ---
-document.getElementById('payBtn').addEventListener('click', async () => {
+document.getElementById('payBtn')?.addEventListener('click', async () => {
   if (cart.length === 0 && posMode !== 'add-kot') {
     alert('Cart is empty!');
     return;
   }
 
-  const customerPhone = document.getElementById('customerPhone').value.trim();
-  const customerName = document.getElementById('customerName').value.trim();
-  const customerAddress = document.getElementById('customerAddress')
-    ? document.getElementById('customerAddress').value.trim()
-    : '';
+  const customerPhone = document.getElementById('customerPhone')?.value.trim() || '';
+  const customerName = document.getElementById('customerName')?.value.trim() || '';
+  const custAddrEl = document.getElementById('customerAddress');
+  const customerAddress = custAddrEl ? custAddrEl.value.trim() : '';
   const orderTypeNode = document.querySelector('input[name="orderType"]:checked');
   const orderType = orderTypeNode ? orderTypeNode.value : 'dine-in';
 
@@ -708,6 +718,7 @@ document.getElementById('payBtn').addEventListener('click', async () => {
   }
 
   const orderData = {
+    branch: 'Kalyanpur',
     orderType,
     customerPhone,
     customerName,
@@ -716,8 +727,8 @@ document.getElementById('payBtn').addEventListener('click', async () => {
       : customerAddress,
     customerAddress: customerAddress,
     items: cart,
-    subtotal: parseInt(document.getElementById('cartSubtotal').innerText.replace('₹', '')),
-    discount: Number(document.getElementById('discountInput').value) || 0,
+    subtotal: parseInt(document.getElementById('cartSubtotal')?.innerText.replace('₹', '') || 0),
+    discount: Number(document.getElementById('discountInput')?.value) || 0,
     rewardCoinsUsed: window._rewardCoinsUsed || 0,
     rewardCoinsValue: window._rewardCoinsValue || 0,
     serviceCharge: document.getElementById('serviceChargeInput')
@@ -726,9 +737,9 @@ document.getElementById('payBtn').addEventListener('click', async () => {
     deliveryCharge: document.getElementById('deliveryChargeInput')
       ? Number(document.getElementById('deliveryChargeInput').value)
       : 0,
-    gstAmount: parseFloat(document.getElementById('cartGst').innerText.replace('₹', '')),
-    grandTotal: parseInt(document.getElementById('cartTotal').innerText.replace('₹', '')),
-    paymentMethod: posMode ? 'pending' : document.getElementById('paymentMethod').value,
+    gstAmount: parseFloat(document.getElementById('cartGst')?.innerText.replace('₹', '') || 0),
+    grandTotal: parseInt(document.getElementById('cartTotal')?.innerText.replace('₹', '') || 0),
+    paymentMethod: posMode ? 'pending' : (document.getElementById('paymentMethod')?.value || 'cash'),
   };
 
   const payBtn = document.getElementById('payBtn');
@@ -772,40 +783,27 @@ document.getElementById('payBtn').addEventListener('click', async () => {
       alert('Table Started & KOT Sent! 👨‍🍳');
       window.location.href = 'tables.html';
     } else {
+            // Order Success
       const res = await fetch(`${API_URL}/orders`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(orderData),
       });
       const data = await res.json();
 
+      if (!res.ok) throw new Error(data.message || 'Order failed');
+
+      // 1. Thermal Printer Bill Print
       generatePrintReceipt(data.order, data.customerData);
       window.print();
 
-      if (customerPhone && confirm('Order Placed! Send bill on WhatsApp?')) {
-        sendWhatsAppBill(data.order);
-      }
-
+      // 2. Reset Cart & UI (Backend automatically sends WhatsApp message)
       cart = [];
-      document.getElementById('customerPhone').value = '';
-      document.getElementById('customerName').value = '';
-      if (document.getElementById('customerAddress'))
-        document.getElementById('customerAddress').value = '';
-      document.getElementById('discountInput').value = '0';
-      if (document.getElementById('serviceChargeInput'))
-        document.getElementById('serviceChargeInput').value = '0';
-      if (document.getElementById('deliveryChargeInput'))
-        document.getElementById('deliveryChargeInput').value = '0';
-      document.getElementById('gstToggle').checked = false;
       resetCustomerInfo();
       renderCart();
 
       document.querySelector('.cart-panel')?.classList.remove('open');
       document.getElementById('cartOverlay')?.classList.remove('open');
-    }
   } catch (error) {
     alert(`Error: ${error.message}`);
   } finally {
@@ -825,7 +823,7 @@ if (clearBtn) {
     if (cart.length > 0)
       return alert("Please click 'ADD ITEMS' first to save new items before clearing the table!");
 
-    const paymentMethod = document.getElementById('paymentMethod').value;
+    const paymentMethod = document.getElementById('paymentMethod')?.value || 'cash';
     clearBtn.innerText = 'Printing...';
     clearBtn.disabled = true;
 
@@ -858,7 +856,7 @@ if (clearBtn) {
   });
 }
 
-// --- 9. Print & WhatsApp ---
+// --- 9. Print Receipt Only ---
 function generatePrintReceipt(order, customer) {
   const container = document.getElementById('printReceipt');
   if (!container) return;
@@ -893,12 +891,8 @@ function generatePrintReceipt(order, customer) {
   });
 
   const date = new Date(order.createdAt || Date.now()).toLocaleString('en-IN', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: true,
   });
 
   const orderType = (order.orderType || '').toUpperCase();
@@ -1002,24 +996,21 @@ function generatePrintReceipt(order, customer) {
   `;
 }
 
+// 🔥 INSTANT WHATSAPP SENDER (Rasta 1)
 function sendWhatsAppBill(order) {
-  if (!order.customer || !order.customer.phone || order.customer.phone === 'N/A') {
-    return;
-  }
+  if (!order) return;
+  const phoneVal = order.customerPhone || order.customer?.phone;
+  if (!phoneVal || phoneVal === 'N/A') return;
 
-  const name =
-    order.customer.name && order.customer.name !== 'Guest'
-      ? order.customer.name
-      : 'Valued Customer';
+  const cleanPhone = String(phoneVal).replace(/[^0-9]/g, '').slice(-10);
+  if (cleanPhone.length < 10) return;
+
+  const name = order.customerName || order.customer?.name || 'Valued Customer';
   const dateObj = new Date(order.createdAt || Date.now());
   const date = dateObj.toLocaleDateString('en-IN');
-  const time = dateObj.toLocaleTimeString('en-IN', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
-  });
+  const time = dateObj.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
 
-  const amount = order.grandTotal;
+  const amount = order.grandTotal || 0;
   const orderType = (order.orderType || 'Takeaway').toUpperCase();
   const rewardPoints = order.rewardCoinsEarned || 0;
   const invoiceLink = `${window.location.origin}/track.html?id=${order._id}`;
@@ -1060,9 +1051,9 @@ Singhpur Chauraha, Bithoor Rd, Kalyanpur, Kanpur
 ✨ *Thanks again!*
 🍕 *Hot, Fresh & Perfect Every Time!*`;
 
-  const whatsappUrl = `https://wa.me/91${order.customer.phone}?text=${encodeURIComponent(
-    message
-  )}`;
+  const whatsappUrl = `https://wa.me/91${cleanPhone}?text=${encodeURIComponent(message)}`;
+  
+  // Instant open WhatsApp
   window.open(whatsappUrl, '_blank');
 }
 
@@ -1110,7 +1101,9 @@ function toggleNightMode() {
   applyNightMode();
 }
 
-// ========== PRODUCT SEARCH ==========
+// =========================================
+// PRODUCT SEARCH BAR
+// =========================================
 function onProductSearch() {
   const input = document.getElementById('productSearch');
   const clearBtn = document.getElementById('clearSearchBtn');
@@ -1120,14 +1113,10 @@ function onProductSearch() {
     clearBtn.classList.toggle('show', q.trim().length > 0);
   }
 
-  // Search me type ho raha ho to saari categories me dhoondho
-  // Empty ho to current category dikhao
   if (q.trim()) {
-    // category highlight optional hata sakte ho
     document.querySelectorAll('.category-btn').forEach((b) => b.classList.remove('active'));
     renderProducts(currentCategory, q);
   } else {
-    // pehli category active rakho / current
     renderProducts(currentCategory || menuData.categories[0]?._id, '');
   }
 }
@@ -1138,7 +1127,6 @@ function clearProductSearch() {
   const clearBtn = document.getElementById('clearSearchBtn');
   if (clearBtn) clearBtn.classList.remove('show');
 
-  // current / first category restore
   const firstCat = menuData.categories[0];
   if (firstCat) {
     document.querySelectorAll('.category-btn').forEach((b, i) => {
@@ -1150,10 +1138,8 @@ function clearProductSearch() {
   }
 }
 
-// Search listener
 document.getElementById('productSearch')?.addEventListener('input', onProductSearch);
 
-// Enter se pehla result open (optional speed)
 document.getElementById('productSearch')?.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') {
     e.preventDefault();
