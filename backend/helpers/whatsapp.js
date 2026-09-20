@@ -40,7 +40,8 @@ ${trackerUrl}
 
 ✨ *Hot, Fresh & Perfect Every Time!*`;
 
-    const authenticKey = '35315065726665637450697a7a615748415450503130301765611474';
+    const authenticKey = '34346a6974656e6472616373696e3130301742193271';
+
     const encodedMessage = encodeURIComponent(messageText);
 
     const apiUrl = `http://wapp.powerstext.in/http-tokenkeyapi.php?authentic-key=${authenticKey}&route=1&number=${cleanPhone}&message=${encodedMessage}`;
