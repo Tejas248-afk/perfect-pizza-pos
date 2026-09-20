@@ -1,12 +1,29 @@
-window.SOCKET_URL =
-  window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1')
-    ? 'http://localhost:5000'
-    : window.location.origin;
+// 🔥 APNA RENDER BACKEND URL YAHAN LIKHO (Bina aakhiri slash '/')
+const RENDER_BACKEND_URL = "https://perfect-pizza-pos.onrender.com"; 
+
+window.SOCKET_URL = (window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1'))
+  ? 'http://localhost:5000'
+  : RENDER_BACKEND_URL;
+
 window.API_URL = `${window.SOCKET_URL}/api`;
+
+const API_URL = window.API_URL;
+const SOCKET_URL = window.SOCKET_URL;
+
 let token = localStorage.getItem('token');
-let user = JSON.parse(localStorage.getItem('user'));
+let user = null;
+
+try {
+  const userStr = localStorage.getItem('user');
+  if (userStr && userStr !== 'undefined') {
+    user = JSON.parse(userStr);
+  }
+} catch (e) {
+  localStorage.clear();
+}
 
 if (!token || !user) {
+  localStorage.clear();
   window.location.href = 'index.html';
 }
 
@@ -29,19 +46,19 @@ if (user.role === 'cashier') {
 
 // 3. Hide Admin Buttons from UI for Cashier
 document.addEventListener('DOMContentLoaded', () => {
-  if (user.role === 'cashier') {
+  if (user && user.role === 'cashier') {
     document.querySelectorAll('a[href="menu-manager.html"], a[href="reports.html"], a[href="settings.html"]').forEach(btn => {
-      btn.style.display = 'none'; // Hide buttons
+      btn.style.display = 'none';
     });
   }
   const userNameEl = document.getElementById('userName');
-  if (userNameEl) userNameEl.innerText = `👤 ${user.name} (${user.role})`;
+  if (userNameEl && user) userNameEl.innerText = `👤 ${user.name} (${user.role})`;
 });
 // ------------------------------------
 
 function setFilter(type) {
   document.querySelectorAll('.btn-preset').forEach(b => b.classList.remove('active'));
-  event.target.classList.add('active');
+  if (event && event.currentTarget) event.currentTarget.classList.add('active');
 
   const today = new Date();
   let start = new Date();
@@ -59,8 +76,10 @@ function setFilter(type) {
     start = new Date(today.getFullYear(), today.getMonth(), 1);
   }
 
-  document.getElementById('startDate').value = formatDate(start);
-  document.getElementById('endDate').value = formatDate(end);
+  const startEl = document.getElementById('startDate');
+  const endEl = document.getElementById('endDate');
+  if (startEl) startEl.value = formatDate(start);
+  if (endEl) endEl.value = formatDate(end);
 
   fetchReports();
 }
@@ -70,8 +89,13 @@ function formatDate(date) {
 }
 
 async function fetchReports() {
-  const startDate = document.getElementById('startDate').value;
-  const endDate = document.getElementById('endDate').value;
+  const startDateEl = document.getElementById('startDate');
+  const endDateEl = document.getElementById('endDate');
+  
+  if (!startDateEl || !endDateEl) return;
+  
+  const startDate = startDateEl.value;
+  const endDate = endDateEl.value;
 
   try {
     const res = await fetch(`${API_URL}/reports/summary?startDate=${startDate}&endDate=${endDate}`, {
@@ -90,24 +114,31 @@ async function fetchReports() {
 
 function renderReportData(data) {
   // KPIs
-  document.getElementById('valTotalSales').innerText = `₹${data.totalSales}`;
-  document.getElementById('valTotalOrders').innerText = data.totalOrders;
-  document.getElementById('valAvgOrder').innerText = `₹${data.averageOrderValue}`;
-  document.getElementById('valGst').innerText = `₹${data.totalGst}`;
+  const setTxt = (id, val) => {
+    const el = document.getElementById(id);
+    if (el) el.innerText = val;
+  };
+
+  setTxt('valTotalSales', `₹${data.totalSales || 0}`);
+  setTxt('valTotalOrders', data.totalOrders || 0);
+  setTxt('valAvgOrder', `₹${data.averageOrderValue || 0}`);
+  setTxt('valGst', `₹${data.totalGst || 0}`);
 
   // Payment Breakdown
-  document.getElementById('valUpi').innerText = `₹${data.paymentSplit.upi || 0}`;
-  document.getElementById('valCash').innerText = `₹${data.paymentSplit.cash || 0}`;
-  document.getElementById('valCard').innerText = `₹${data.paymentSplit.card || 0}`;
+  setTxt('valUpi', `₹${data.paymentSplit?.upi || 0}`);
+  setTxt('valCash', `₹${data.paymentSplit?.cash || 0}`);
+  setTxt('valCard', `₹${data.paymentSplit?.card || 0}`);
 
   // Order Type Breakdown
-  document.getElementById('valTypeDelivery').innerText = `${data.orderTypeSplit.delivery || 0} orders`;
-  document.getElementById('valTypeTakeaway').innerText = `${data.orderTypeSplit.takeaway || 0} orders`;
-  document.getElementById('valTypeDinein').innerText = `${data.orderTypeSplit['dine-in'] || 0} orders`;
+  setTxt('valTypeDelivery', `${data.orderTypeSplit?.delivery || 0} orders`);
+  setTxt('valTypeTakeaway', `${data.orderTypeSplit?.takeaway || 0} orders`);
+  setTxt('valTypeDinein', `${data.orderTypeSplit?.['dine-in'] || 0} orders`);
 
   // Top Products Table
   const tbody = document.getElementById('topProductsBody');
-  if (data.topProducts.length === 0) {
+  if (!tbody) return;
+
+  if (!data.topProducts || data.topProducts.length === 0) {
     tbody.innerHTML = '<tr><td colspan="4" class="text-center">No sales recorded for this period</td></tr>';
     return;
   }
@@ -126,6 +157,7 @@ function logout() {
   localStorage.clear();
   window.location.href = 'index.html';
 }
+
 // ========== NIGHT MODE ==========
 function applyNightMode() {
   const on = localStorage.getItem('nightMode') === '1';

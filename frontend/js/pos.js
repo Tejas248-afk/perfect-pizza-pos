@@ -1,12 +1,30 @@
 // --- URLs & CONFIGURATION (DEPLOYMENT READY) ---
-window.SOCKET_URL = window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1') ? 'http://localhost:5000' : window.location.origin;
+// 🔥 APNA RENDER BACKEND URL YAHAN DALEIN (Bina aakhiri slash '/')
+const RENDER_BACKEND_URL = "https://perfect-pizza-pos.onrender.com"; // <-- Put your actual Render URL here
+
+window.SOCKET_URL = (window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1'))
+  ? 'http://localhost:5000'
+  : RENDER_BACKEND_URL;
+
 window.API_URL = `${window.SOCKET_URL}/api`;
 
 const API_URL = window.API_URL;
+const SOCKET_URL = window.SOCKET_URL;
+
 let token = localStorage.getItem('token');
-let user = JSON.parse(localStorage.getItem('user'));
+let user = null;
+
+try {
+  const userStr = localStorage.getItem('user');
+  if (userStr && userStr !== 'undefined') {
+    user = JSON.parse(userStr);
+  }
+} catch (e) {
+  localStorage.clear();
+}
 
 if (!token || !user) {
+  localStorage.clear();
   window.location.href = 'index.html';
 }
 
@@ -119,12 +137,37 @@ function renderCategories() {
   });
 }
 
-function renderProducts(categoryId) {
+function renderProducts(categoryId, searchQuery = '') {
   currentCategory = categoryId;
   const container = document.getElementById('productsGrid');
+  if (!container) return;
   container.innerHTML = '';
 
-  const products = menuData.products.filter((p) => p.category === categoryId);
+  const q = (searchQuery || '').trim().toLowerCase();
+
+  let products = menuData.products.filter((p) => {
+    // category match (search empty ho to current category, search ho to all categories me dhoondho)
+    const catOk = q ? true : p.category === categoryId;
+    if (!catOk) return false;
+
+    if (!q) return true;
+
+    const name = (p.name || '').toLowerCase();
+    const desc = (p.description || '').toLowerCase();
+    const tags = Array.isArray(p.tags) ? p.tags.join(' ').toLowerCase() : '';
+    return name.includes(q) || desc.includes(q) || tags.includes(q);
+  });
+
+  // optional: available only
+  // products = products.filter(p => p.isAvailable !== false);
+
+  if (products.length === 0) {
+    container.innerHTML = `
+      <div style="grid-column:1/-1; text-align:center; padding:40px 20px; color:#94A3B8; font-weight:600;">
+        ${q ? `No products found for “${searchQuery}”` : 'No products in this category'}
+      </div>`;
+    return;
+  }
 
   products.forEach((p) => {
     const card = document.createElement('div');
@@ -170,7 +213,6 @@ function renderProducts(categoryId) {
     container.appendChild(card);
   });
 }
-
 // --- 2. Customer Lookup (Name + Address Auto Fill) ---
 let lookupTimer = null;
 document.getElementById('customerPhone').addEventListener('input', (e) => {
@@ -1067,6 +1109,58 @@ function toggleNightMode() {
   localStorage.setItem('nightMode', on ? '0' : '1');
   applyNightMode();
 }
+
+// ========== PRODUCT SEARCH ==========
+function onProductSearch() {
+  const input = document.getElementById('productSearch');
+  const clearBtn = document.getElementById('clearSearchBtn');
+  const q = input ? input.value : '';
+
+  if (clearBtn) {
+    clearBtn.classList.toggle('show', q.trim().length > 0);
+  }
+
+  // Search me type ho raha ho to saari categories me dhoondho
+  // Empty ho to current category dikhao
+  if (q.trim()) {
+    // category highlight optional hata sakte ho
+    document.querySelectorAll('.category-btn').forEach((b) => b.classList.remove('active'));
+    renderProducts(currentCategory, q);
+  } else {
+    // pehli category active rakho / current
+    renderProducts(currentCategory || menuData.categories[0]?._id, '');
+  }
+}
+
+function clearProductSearch() {
+  const input = document.getElementById('productSearch');
+  if (input) input.value = '';
+  const clearBtn = document.getElementById('clearSearchBtn');
+  if (clearBtn) clearBtn.classList.remove('show');
+
+  // current / first category restore
+  const firstCat = menuData.categories[0];
+  if (firstCat) {
+    document.querySelectorAll('.category-btn').forEach((b, i) => {
+      b.classList.toggle('active', i === 0);
+    });
+    renderProducts(firstCat._id, '');
+  } else {
+    renderProducts(currentCategory, '');
+  }
+}
+
+// Search listener
+document.getElementById('productSearch')?.addEventListener('input', onProductSearch);
+
+// Enter se pehla result open (optional speed)
+document.getElementById('productSearch')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const firstCard = document.querySelector('#productsGrid .product-card');
+    if (firstCard) firstCard.click();
+  }
+});
 
 // Start
 document.addEventListener('DOMContentLoaded', applyNightMode);

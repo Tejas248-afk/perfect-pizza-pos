@@ -1,43 +1,61 @@
+// 🔥 APNA RENDER BACKEND URL YAHAN LIKHO
+const RENDER_BACKEND_URL = "https://perfect-pizza-pos.onrender.com"; // <-- CHANGE THIS
+
 window.SOCKET_URL =
   window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1')
     ? 'http://localhost:5000'
-    : window.location.origin;
+    : RENDER_BACKEND_URL;
+
 window.API_URL = `${window.SOCKET_URL}/api`;
+
+const API_URL = window.API_URL;
+
 let token = localStorage.getItem('token');
-let user = JSON.parse(localStorage.getItem('user'));
+let user = null;
+
+try {
+  const userStr = localStorage.getItem('user');
+  if (userStr && userStr !== 'undefined') {
+    user = JSON.parse(userStr);
+  }
+} catch (e) {
+  localStorage.clear();
+}
 
 if (!token || !user) {
+  localStorage.clear();
   window.location.href = 'index.html';
 }
 
 // --- SECURITY & ROLE ACCESS GUARD ---
 const currentPage = window.location.pathname.split('/').pop();
 
-// 1. Kitchen staff trying to access anything other than kitchen.html
 if (user.role === 'kitchen' && !currentPage.includes('kitchen.html')) {
-  window.location.href = 'kitchen.html'; 
+  window.location.href = 'kitchen.html';
 }
 
-// 2. Cashier trying to access Admin pages
 if (user.role === 'cashier') {
   const adminPages = ['menu-manager.html', 'reports.html', 'settings.html'];
-  if (adminPages.some(page => currentPage.includes(page))) {
+  if (adminPages.some((page) => currentPage.includes(page))) {
     alert('⛔ Access Denied: Only Admins can view this page.');
     window.location.href = 'pos.html';
   }
 }
 
-// 3. Hide Admin Buttons from UI for Cashier
 document.addEventListener('DOMContentLoaded', () => {
   if (user.role === 'cashier') {
-    document.querySelectorAll('a[href="menu-manager.html"], a[href="reports.html"], a[href="settings.html"]').forEach(btn => {
-      btn.style.display = 'none'; // Hide buttons
-    });
+    document
+      .querySelectorAll(
+        'a[href="menu-manager.html"], a[href="reports.html"], a[href="settings.html"]'
+      )
+      .forEach((btn) => {
+        btn.style.display = 'none';
+      });
   }
   const userNameEl = document.getElementById('userName');
   if (userNameEl) userNameEl.innerText = `👤 ${user.name} (${user.role})`;
 });
-// ------------------------------------
+
 // Only admin / super-admin
 if (user && !['super-admin', 'admin'].includes(user.role)) {
   alert('Only Admin can access Settings');
@@ -53,10 +71,10 @@ function switchSettingsTab(tab) {
   document.querySelectorAll('.st-tab').forEach((b) => b.classList.remove('active'));
   if (event && event.currentTarget) event.currentTarget.classList.add('active');
 
-  document.getElementById('tab-cafe').classList.add('hidden');
-  document.getElementById('tab-rewards').classList.add('hidden');
-  document.getElementById('tab-staff').classList.add('hidden');
-  document.getElementById('tab-' + tab).classList.remove('hidden');
+  document.getElementById('tab-cafe')?.classList.add('hidden');
+  document.getElementById('tab-rewards')?.classList.add('hidden');
+  document.getElementById('tab-staff')?.classList.add('hidden');
+  document.getElementById('tab-' + tab)?.classList.remove('hidden');
 
   if (tab === 'staff') loadStaff();
 }
@@ -77,45 +95,61 @@ async function loadSettings() {
 }
 
 function fillCafeForm(s) {
-  document.getElementById('cafeName').value = s.cafeName || '';
-  document.getElementById('tagline').value = s.tagline || '';
-  document.getElementById('address').value = s.address || '';
-  document.getElementById('phone').value = s.phone || '';
-  document.getElementById('whatsapp').value = s.whatsapp || '';
-  document.getElementById('gstNumber').value = s.gstNumber || '';
-  document.getElementById('email').value = s.email || '';
-  document.getElementById('website').value = s.website || '';
-  document.getElementById('workingHours').value = s.workingHours || '';
-  document.getElementById('invoicePrefix').value = s.invoicePrefix || '';
-  document.getElementById('footerText').value = s.footerText || '';
-  document.getElementById('defaultGST').value = s.defaultGST ?? 5;
-  document.getElementById('gstDefaultOn').checked = !!s.gstDefaultOn;
+  const set = (id, val) => {
+    const el = document.getElementById(id);
+    if (el) el.value = val ?? '';
+  };
+  set('cafeName', s.cafeName);
+  set('tagline', s.tagline);
+  set('address', s.address);
+  set('phone', s.phone);
+  set('whatsapp', s.whatsapp);
+  set('gstNumber', s.gstNumber);
+  set('email', s.email);
+  set('website', s.website);
+  set('workingHours', s.workingHours);
+  set('invoicePrefix', s.invoicePrefix);
+  set('footerText', s.footerText);
+  set('defaultGST', s.defaultGST ?? 5);
+  const gstOn = document.getElementById('gstDefaultOn');
+  if (gstOn) gstOn.checked = !!s.gstDefaultOn;
 }
 
 function fillRewardsForm(s) {
-  document.getElementById('rewardThreshold').value = s.rewardThreshold ?? 100;
-  document.getElementById('earnAboveHundred').value = s.earnAboveHundred ?? 20;
-  document.getElementById('earnBelowOrEqualHundred').value = s.earnBelowOrEqualHundred ?? 10;
-  document.getElementById('coinsPerRedeemBlock').value = s.coinsPerRedeemBlock ?? 20;
-  document.getElementById('redeemBlockValue').value = s.redeemBlockValue ?? 5;
+  const set = (id, val) => {
+    const el = document.getElementById(id);
+    if (el) el.value = val;
+  };
+  set('rewardThreshold', s.rewardThreshold ?? 100);
+  set('earnAboveHundred', s.earnAboveHundred ?? 20);
+  set('earnBelowOrEqualHundred', s.earnBelowOrEqualHundred ?? 10);
+  set('coinsPerRedeemBlock', s.coinsPerRedeemBlock ?? 20);
+  set('redeemBlockValue', s.redeemBlockValue ?? 5);
   updateRewardPreview();
 }
 
 function updateRewardPreview() {
-  const coins = document.getElementById('coinsPerRedeemBlock').value || 20;
-  const val = document.getElementById('redeemBlockValue').value || 5;
-  const above = document.getElementById('earnAboveHundred').value || 20;
-  const below = document.getElementById('earnBelowOrEqualHundred').value || 10;
-  const th = document.getElementById('rewardThreshold').value || 100;
-  document.getElementById('rewardPreview').innerText =
-    `Earn: >₹${th} → ${above} coins, ≤₹${th} → ${below} coins  |  Redeem: ${coins} coins = ₹${val}`;
+  const coins = document.getElementById('coinsPerRedeemBlock')?.value || 20;
+  const val = document.getElementById('redeemBlockValue')?.value || 5;
+  const above = document.getElementById('earnAboveHundred')?.value || 20;
+  const below = document.getElementById('earnBelowOrEqualHundred')?.value || 10;
+  const th = document.getElementById('rewardThreshold')?.value || 100;
+  const preview = document.getElementById('rewardPreview');
+  if (preview) {
+    preview.innerText = `Earn: >₹${th} → ${above} coins, ≤₹${th} → ${below} coins  |  Redeem: ${coins} coins = ₹${val}`;
+  }
 }
 
-['rewardThreshold', 'earnAboveHundred', 'earnBelowOrEqualHundred', 'coinsPerRedeemBlock', 'redeemBlockValue']
-  .forEach((id) => {
-    const el = document.getElementById(id);
-    if (el) el.addEventListener('input', updateRewardPreview);
-  });
+[
+  'rewardThreshold',
+  'earnAboveHundred',
+  'earnBelowOrEqualHundred',
+  'coinsPerRedeemBlock',
+  'redeemBlockValue',
+].forEach((id) => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('input', updateRewardPreview);
+});
 
 // ---------- SAVE CAFE ----------
 async function saveCafeSettings(e) {
@@ -160,7 +194,8 @@ async function saveRewardSettings(e) {
   const payload = {
     rewardThreshold: Number(document.getElementById('rewardThreshold').value) || 100,
     earnAboveHundred: Number(document.getElementById('earnAboveHundred').value) || 20,
-    earnBelowOrEqualHundred: Number(document.getElementById('earnBelowOrEqualHundred').value) || 10,
+    earnBelowOrEqualHundred:
+      Number(document.getElementById('earnBelowOrEqualHundred').value) || 10,
     coinsPerRedeemBlock: Number(document.getElementById('coinsPerRedeemBlock').value) || 20,
     redeemBlockValue: Number(document.getElementById('redeemBlockValue').value) || 5,
   };
@@ -186,6 +221,7 @@ async function saveRewardSettings(e) {
 // ---------- STAFF ----------
 async function loadStaff() {
   const tbody = document.getElementById('staffBody');
+  if (!tbody) return;
   tbody.innerHTML = `<tr><td colspan="5" class="empty">Loading...</td></tr>`;
   try {
     const res = await fetch(`${API_URL}/settings/staff`, {
@@ -201,6 +237,7 @@ async function loadStaff() {
 
 function renderStaff() {
   const tbody = document.getElementById('staffBody');
+  if (!tbody) return;
   if (!staffList.length) {
     tbody.innerHTML = `<tr><td colspan="5" class="empty">No staff found</td></tr>`;
     return;
@@ -238,7 +275,7 @@ function openStaffModal(staff = null) {
   document.getElementById('staffId').value = staff ? staff._id : '';
   document.getElementById('staffName').value = staff ? staff.name : '';
   document.getElementById('staffPhone').value = staff ? staff.phone : '';
-  document.getElementById('staffPhone').disabled = !!staff; // phone locked on edit
+  document.getElementById('staffPhone').disabled = !!staff;
   document.getElementById('staffEmail').value = staff ? staff.email || '' : '';
   document.getElementById('staffRole').value = staff ? staff.role : 'cashier';
   document.getElementById('staffPassword').value = '';
@@ -249,7 +286,6 @@ function openStaffModal(staff = null) {
   document.getElementById('staffActiveWrap').style.display = staff ? 'block' : 'none';
   document.getElementById('staffActive').checked = staff ? !!staff.isActive : true;
 
-  // Hide admin option for non super-admin
   const roleSelect = document.getElementById('staffRole');
   [...roleSelect.options].forEach((opt) => {
     if (opt.value === 'admin' || opt.value === 'super-admin') {
@@ -337,6 +373,7 @@ function logout() {
   localStorage.clear();
   window.location.href = 'index.html';
 }
+
 // ========== NIGHT MODE ==========
 function applyNightMode() {
   const on = localStorage.getItem('nightMode') === '1';
@@ -351,8 +388,6 @@ function toggleNightMode() {
   applyNightMode();
 }
 
-// page load
 document.addEventListener('DOMContentLoaded', applyNightMode);
 applyNightMode();
-// init
 loadSettings();

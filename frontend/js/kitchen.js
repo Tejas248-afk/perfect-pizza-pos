@@ -1,8 +1,43 @@
+// 🔥 APNA RENDER BACKEND URL YAHAN LIKHO
+const RENDER_BACKEND_URL = "https://perfect-pizza-pos.onrender.com"; // <-- CHANGE THIS
+
 window.SOCKET_URL =
   window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1')
     ? 'http://localhost:5000'
-    : window.location.origin;
+    : RENDER_BACKEND_URL;
+
 window.API_URL = `${window.SOCKET_URL}/api`;
+
+const SOCKET_URL = window.SOCKET_URL;
+const API_URL = window.API_URL;
+
+let token = localStorage.getItem('token');
+let user = null;
+
+try {
+  const userStr = localStorage.getItem('user');
+  if (userStr && userStr !== 'undefined') {
+    user = JSON.parse(userStr);
+  }
+} catch (e) {
+  localStorage.clear();
+}
+
+if (!token || !user) {
+  localStorage.clear();
+  window.location.href = 'index.html';
+}
+
+// kitchen role guard
+const currentPage = window.location.pathname.split('/').pop();
+if (user.role === 'kitchen' && !currentPage.includes('kitchen.html')) {
+  window.location.href = 'kitchen.html';
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const userNameEl = document.getElementById('userName');
+  if (userNameEl && user) userNameEl.innerText = `👤 ${user.name} (${user.role})`;
+});
 
 let orders = [];
 let socket = null;
@@ -61,18 +96,21 @@ document.addEventListener(
 const soundToggle = document.getElementById('soundToggle');
 const soundLabel = document.getElementById('soundLabel');
 
-soundToggle.addEventListener('change', (e) => {
-  soundEnabled = e.target.checked;
-  soundLabel.innerText = soundEnabled ? '🔊 Sound ON' : '🔇 Sound OFF';
-  if (soundEnabled) {
-    initAudio();
-    playBeep(); // test beep
-  }
-});
+if (soundToggle) {
+  soundToggle.addEventListener('change', (e) => {
+    soundEnabled = e.target.checked;
+    if (soundLabel) soundLabel.innerText = soundEnabled ? '🔊 Sound ON' : '🔇 Sound OFF';
+    if (soundEnabled) {
+      initAudio();
+      playBeep(); // test beep
+    }
+  });
+}
 
 // ---------- SOCKET ----------
 function setConnectionStatus(online, text) {
   const el = document.getElementById('connectionStatus');
+  if (!el) return;
   el.innerHTML = `<span class="dot ${online ? 'online' : 'offline'}"></span> ${text}`;
 }
 
@@ -138,8 +176,11 @@ async function loadKitchenOrders() {
     renderBoard();
   } catch (err) {
     console.error(err);
-    document.getElementById('colNew').innerHTML =
-      '<div class="empty-col">⚠️ Backend not connected<br><small>Check npm run dev</small></div>';
+    const col = document.getElementById('colNew');
+    if (col) {
+      col.innerHTML =
+        '<div class="empty-col">⚠️ Backend not connected<br><small>Check Render server</small></div>';
+    }
   }
 }
 
@@ -161,16 +202,25 @@ function renderBoard(flashId = null) {
   const prepOrders = orders.filter((o) => o.status === 'preparing');
   const readyOrders = orders.filter((o) => o.status === 'ready');
 
-  document.getElementById('countNew').innerText = newOrders.length;
-  document.getElementById('countPreparing').innerText = prepOrders.length;
-  document.getElementById('countReady').innerText = readyOrders.length;
-  document.getElementById('badgeNew').innerText = newOrders.length;
-  document.getElementById('badgePreparing').innerText = prepOrders.length;
-  document.getElementById('badgeReady').innerText = readyOrders.length;
+  const setText = (id, val) => {
+    const el = document.getElementById(id);
+    if (el) el.innerText = val;
+  };
 
-  document.getElementById('colNew').innerHTML = renderCards(newOrders, flashId);
-  document.getElementById('colPreparing').innerHTML = renderCards(prepOrders, flashId);
-  document.getElementById('colReady').innerHTML = renderCards(readyOrders, flashId);
+  setText('countNew', newOrders.length);
+  setText('countPreparing', prepOrders.length);
+  setText('countReady', readyOrders.length);
+  setText('badgeNew', newOrders.length);
+  setText('badgePreparing', prepOrders.length);
+  setText('badgeReady', readyOrders.length);
+
+  const colNew = document.getElementById('colNew');
+  const colPrep = document.getElementById('colPreparing');
+  const colReady = document.getElementById('colReady');
+
+  if (colNew) colNew.innerHTML = renderCards(newOrders, flashId);
+  if (colPrep) colPrep.innerHTML = renderCards(prepOrders, flashId);
+  if (colReady) colReady.innerHTML = renderCards(readyOrders, flashId);
 }
 
 function renderCards(list, flashId) {
@@ -305,9 +355,15 @@ async function updateStatus(id, status) {
   }
 }
 
+function logout() {
+  localStorage.clear();
+  window.location.href = 'index.html';
+}
+
 // timers
 setInterval(() => renderBoard(), 30000);
 setInterval(loadKitchenOrders, 60000);
+
 // ========== NIGHT MODE ==========
 function applyNightMode() {
   const on = localStorage.getItem('nightMode') === '1';

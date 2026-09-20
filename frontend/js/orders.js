@@ -1,8 +1,10 @@
-// --- URLs & CONFIGURATION (DEPLOYMENT READY) ---
+// 🔥 APNA RENDER BACKEND URL YAHAN LIKHO
+const RENDER_BACKEND_URL = "https://perfect-pizza-pos.onrender.com"; // <-- CHANGE THIS
+
 window.SOCKET_URL =
   window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1')
     ? 'http://localhost:5000'
-    : window.location.origin;
+    : RENDER_BACKEND_URL;
 
 window.API_URL = `${window.SOCKET_URL}/api`;
 
@@ -10,21 +12,29 @@ var SOCKET_URL = window.SOCKET_URL;
 var API_URL = window.API_URL;
 
 let token = localStorage.getItem('token');
-let user = JSON.parse(localStorage.getItem('user'));
+let user = null;
+
+try {
+  const userStr = localStorage.getItem('user');
+  if (userStr && userStr !== 'undefined') {
+    user = JSON.parse(userStr);
+  }
+} catch (e) {
+  localStorage.clear();
+}
 
 if (!token || !user) {
+  localStorage.clear();
   window.location.href = 'index.html';
 }
 
 // --- SECURITY & ROLE ACCESS GUARD ---
 const currentPage = window.location.pathname.split('/').pop();
 
-// 1. Kitchen staff trying to access anything other than kitchen.html
 if (user.role === 'kitchen' && !currentPage.includes('kitchen.html')) {
   window.location.href = 'kitchen.html';
 }
 
-// 2. Cashier trying to access Admin pages
 if (user.role === 'cashier') {
   const adminPages = ['menu-manager.html', 'reports.html', 'settings.html'];
   if (adminPages.some((page) => currentPage.includes(page))) {
@@ -33,7 +43,6 @@ if (user.role === 'cashier') {
   }
 }
 
-// 3. Hide Admin Buttons from UI for Cashier
 document.addEventListener('DOMContentLoaded', () => {
   if (user && user.role === 'cashier') {
     document
@@ -50,7 +59,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ------------------------------------
 let currentFilter = 'active';
-let allOrders = []; // local cache for realtime updates
+let allOrders = [];
 let socket = null;
 
 // ---------- Tabs ----------
@@ -91,7 +100,6 @@ function connectSocket() {
     console.error('Socket Error:', err.message);
   });
 
-  // New order → sound + UI
   socket.on('newOrder', (order) => {
     const idx = allOrders.findIndex((o) => o._id === order._id);
     if (idx >= 0) allOrders[idx] = order;
@@ -102,7 +110,6 @@ function connectSocket() {
     flashPageTitle();
   });
 
-  // Status update → no sound
   socket.on('orderUpdated', (order) => {
     const idx = allOrders.findIndex((o) => o._id === order._id);
     if (idx >= 0) allOrders[idx] = order;
@@ -406,6 +413,4 @@ function toggleNightMode() {
 document.addEventListener('DOMContentLoaded', applyNightMode);
 connectSocket();
 loadOrders();
-
-// Backup refresh
 setInterval(loadOrders, 60000);

@@ -1,44 +1,62 @@
+// 🔥 APNA RENDER BACKEND URL YAHAN LIKHO
+const RENDER_BACKEND_URL = "https://perfect-pizza-pos.onrender.com"; // <-- CHANGE THIS
+
 window.SOCKET_URL =
   window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1')
     ? 'http://localhost:5000'
-    : window.location.origin;
+    : RENDER_BACKEND_URL;
+
 window.API_URL = `${window.SOCKET_URL}/api`;
+
+const API_URL = window.API_URL;
+
 let token = localStorage.getItem('token');
-let user = JSON.parse(localStorage.getItem('user'));
+let user = null;
+
+try {
+  const userStr = localStorage.getItem('user');
+  if (userStr && userStr !== 'undefined') {
+    user = JSON.parse(userStr);
+  }
+} catch (e) {
+  localStorage.clear();
+}
 
 if (!token || !user) {
+  localStorage.clear();
   window.location.href = 'index.html';
 }
 
 // --- SECURITY & ROLE ACCESS GUARD ---
 const currentPage = window.location.pathname.split('/').pop();
 
-// 1. Kitchen staff trying to access anything other than kitchen.html
 if (user.role === 'kitchen' && !currentPage.includes('kitchen.html')) {
-  window.location.href = 'kitchen.html'; 
+  window.location.href = 'kitchen.html';
 }
 
-// 2. Cashier trying to access Admin pages
 if (user.role === 'cashier') {
   const adminPages = ['menu-manager.html', 'reports.html', 'settings.html'];
-  if (adminPages.some(page => currentPage.includes(page))) {
+  if (adminPages.some((page) => currentPage.includes(page))) {
     alert('⛔ Access Denied: Only Admins can view this page.');
     window.location.href = 'pos.html';
   }
 }
 
-// 3. Hide Admin Buttons from UI for Cashier
 document.addEventListener('DOMContentLoaded', () => {
   if (user.role === 'cashier') {
-    document.querySelectorAll('a[href="menu-manager.html"], a[href="reports.html"], a[href="settings.html"]').forEach(btn => {
-      btn.style.display = 'none'; // Hide buttons
-    });
+    document
+      .querySelectorAll(
+        'a[href="menu-manager.html"], a[href="reports.html"], a[href="settings.html"]'
+      )
+      .forEach((btn) => {
+        btn.style.display = 'none';
+      });
   }
   const userNameEl = document.getElementById('userName');
   if (userNameEl) userNameEl.innerText = `👤 ${user.name} (${user.role})`;
 });
-// ------------------------------------
 
+// ------------------------------------
 let fullMenu = { categories: [], products: [], crusts: [], addons: [] };
 let activeTab = 'products';
 let currentEditId = null;
@@ -69,7 +87,8 @@ function switchTab(tabName) {
     crusts: '🍞 Crusts (Extra Charges)',
     addons: '🧀 Add-ons / Extras',
   };
-  document.getElementById('currentTabTitle').innerText = titles[tabName];
+  const titleEl = document.getElementById('currentTabTitle');
+  if (titleEl) titleEl.innerText = titles[tabName];
   renderTable();
 }
 
@@ -77,6 +96,7 @@ function switchTab(tabName) {
 function renderTable() {
   const thead = document.getElementById('tableHead');
   const tbody = document.getElementById('tableBody');
+  if (!thead || !tbody) return;
 
   if (activeTab === 'products') {
     thead.innerHTML = `
@@ -133,9 +153,7 @@ function renderTable() {
           </tr>`;
       })
       .join('');
-  }
-
-  else if (activeTab === 'categories') {
+  } else if (activeTab === 'categories') {
     thead.innerHTML = `<tr><th>Icon</th><th>Category</th><th>Order</th><th>Items Count</th><th>Actions</th></tr>`;
     if (!fullMenu.categories.length) {
       tbody.innerHTML = emptyRow(5);
@@ -157,9 +175,7 @@ function renderTable() {
           </tr>`;
       })
       .join('');
-  }
-
-  else if (activeTab === 'crusts') {
+  } else if (activeTab === 'crusts') {
     thead.innerHTML = `<tr><th>Crust Name</th><th>Regular Extra</th><th>Medium Extra</th><th>Actions</th></tr>`;
     if (!fullMenu.crusts.length) {
       tbody.innerHTML = emptyRow(4);
@@ -179,9 +195,7 @@ function renderTable() {
       </tr>`
       )
       .join('');
-  }
-
-  else if (activeTab === 'addons') {
+  } else if (activeTab === 'addons') {
     thead.innerHTML = `<tr><th>Add-on Name</th><th>Regular</th><th>Medium</th><th>Large</th><th>Actions</th></tr>`;
     if (!fullMenu.addons.length) {
       tbody.innerHTML = emptyRow(5);
@@ -218,7 +232,6 @@ function openModal(item = null) {
 
   const body = document.getElementById('modalFormBody');
 
-  // ===== PRODUCTS / COMBOS =====
   if (activeTab === 'products') {
     if (!fullMenu.categories.length) {
       alert('Pehle ek Category banao (Categories tab), phir product add karo.');
@@ -236,32 +249,26 @@ function openModal(item = null) {
 
     body.innerHTML = `
       <div class="form-section-title">Basic Info</div>
-
       <div class="form-group">
         <label>Product / Combo Name *</label>
         <input type="text" id="fName" value="${item ? escapeAttr(item.name) : ''}" required placeholder="e.g. Cheese Paneer Pizza / Meal For 2">
       </div>
-
       <div class="form-group">
         <label>Category *</label>
         <select id="fCat" required>${catOptions}</select>
       </div>
-
       <div class="form-group">
         <label>Description / Combo Contents *</label>
         <textarea id="fDesc" rows="3" placeholder="Example: 2 Single Topping Pizza + Garlic Bread + ColdDrink 250ml">${item ? escapeHtml(item.description || '') : ''}</textarea>
         <div class="hint">Combos ke liye yahan poora detail likho — kitchen aur bill me ye dikhega.</div>
       </div>
-
       <div class="form-section-title">Pricing</div>
-
       <div class="form-group">
         <label class="check-line">
           <input type="checkbox" id="fHasSizes" ${hasSizes ? 'checked' : ''} onchange="toggleSizeInputs()">
           Has sizes? (Regular / Medium / Large) — pizzas ke liye ON rakho
         </label>
       </div>
-
       <div id="priceSizes" class="price-grid" style="display:${hasSizes ? 'grid' : 'none'}">
         <div class="form-group">
           <label>Regular ₹</label>
@@ -276,30 +283,23 @@ function openModal(item = null) {
           <input type="number" id="pLrg" min="0" step="1" value="${item?.prices?.large ?? 0}">
         </div>
       </div>
-
       <div id="priceSingle" class="form-group" style="display:${hasSizes ? 'none' : 'block'}">
         <label>Fixed Price ₹ (Burger / Maggi / Combo / Sides)</label>
         <input type="number" id="pSingle" min="0" step="1" value="${item?.prices?.single ?? 0}">
       </div>
-
       <div class="form-section-title">Options</div>
-
       <div class="checks-grid">
         <label class="check-line"><input type="checkbox" id="fCrust" ${item?.hasCrust ? 'checked' : ''}> Allow Crust selection</label>
         <label class="check-line"><input type="checkbox" id="fAddon" ${item?.hasAddons ? 'checked' : ''}> Allow Add-ons</label>
         <label class="check-line"><input type="checkbox" id="fSpicy" ${item?.isSpicy ? 'checked' : ''}> Spicy item 🌶️</label>
         <label class="check-line"><input type="checkbox" id="fAvailable" ${!item || item.isAvailable !== false ? 'checked' : ''}> Available for sale</label>
       </div>
-
       <div class="form-group" style="margin-top:12px">
         <label>Display Order (optional)</label>
         <input type="number" id="fOrder" value="${item?.displayOrder ?? 0}" min="0">
       </div>
     `;
-  }
-
-  // ===== CATEGORIES =====
-  else if (activeTab === 'categories') {
+  } else if (activeTab === 'categories') {
     body.innerHTML = `
       <div class="form-group">
         <label>Category Name *</label>
@@ -315,10 +315,7 @@ function openModal(item = null) {
         <div class="hint">Chhota number pehle dikhega (1, 2, 3...)</div>
       </div>
     `;
-  }
-
-  // ===== CRUSTS =====
-  else if (activeTab === 'crusts') {
+  } else if (activeTab === 'crusts') {
     body.innerHTML = `
       <div class="form-group">
         <label>Crust Name *</label>
@@ -337,10 +334,7 @@ function openModal(item = null) {
       </div>
       <div class="hint">Classic / free crust add karne ki zarurat nahi — POS me default free hota hai.</div>
     `;
-  }
-
-  // ===== ADDONS =====
-  else if (activeTab === 'addons') {
+  } else if (activeTab === 'addons') {
     body.innerHTML = `
       <div class="form-group">
         <label>Add-on Name *</label>
@@ -425,7 +419,12 @@ async function saveItem(e) {
     };
 
     if (!payload.name) return alert('Name required');
-    if (hasSizes && payload.prices.regular <= 0 && payload.prices.medium <= 0 && payload.prices.large <= 0) {
+    if (
+      hasSizes &&
+      payload.prices.regular <= 0 &&
+      payload.prices.medium <= 0 &&
+      payload.prices.large <= 0
+    ) {
       return alert('Kam se kam ek size price daalo');
     }
     if (!hasSizes && payload.prices.single <= 0) {
@@ -520,6 +519,7 @@ function logout() {
   localStorage.clear();
   window.location.href = 'index.html';
 }
+
 // ========== NIGHT MODE ==========
 function applyNightMode() {
   const on = localStorage.getItem('nightMode') === '1';
@@ -534,9 +534,6 @@ function toggleNightMode() {
   applyNightMode();
 }
 
-// page load
 document.addEventListener('DOMContentLoaded', applyNightMode);
 applyNightMode();
-
-// init
 loadMenu();
