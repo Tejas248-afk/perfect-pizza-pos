@@ -1,5 +1,5 @@
 /**
- * Custom WhatsApp Gateway Sender (Powerstext API)
+ * Powerstext WhatsApp API Helper (POST Method with Form-UrlEncoded Body)
  */
 async function sendDirectWhatsAppMessage(phone, order) {
   try {
@@ -8,9 +8,9 @@ async function sendDirectWhatsAppMessage(phone, order) {
     let cleanPhone = String(phone || '').replace(/[^0-9]/g, '');
 
     if (cleanPhone.length >= 10) {
-      cleanPhone = '91' + cleanPhone.slice(-10); // India Prefix
+      cleanPhone = '91' + cleanPhone.slice(-10); // Exact 91 + 10 Digits
     } else {
-      console.log(`⚠️ [WhatsApp Helper] Skipped: Phone "${phone}" is invalid or less than 10 digits.`);
+      console.log(`⚠️ [WhatsApp Helper] Skipped: Phone "${phone}" is invalid.`);
       return;
     }
 
@@ -18,7 +18,7 @@ async function sendDirectWhatsAppMessage(phone, order) {
     const amount = order.grandTotal || 0;
     const trackerUrl = `https://perfect-pizza-pos.netlify.app/track.html?id=${order._id}`;
 
-    // Message Text
+    // WhatsApp Message Content
     const messageText = `🙏 Thank You for Ordering from *Perfect Pizza!* 🍕
 
 Dear *${name}*,
@@ -40,17 +40,31 @@ ${trackerUrl}
 
 ✨ *Hot, Fresh & Perfect Every Time!*`;
 
-    const authenticKey = '35315065726665637450697a7a615748415450503130301765611474';
+    const authenticKey = process.env.POWERSTEXT_KEY || '35315065726665637450697a7a615748415450503130301765611474';
+    const routeId = process.env.POWERSTEXT_ROUTE || '1';
 
-    const encodedMessage = encodeURIComponent(messageText);
+    // 🔥 FORM-URLENCODED DATA AS PER CLIENT DOCS
+    const formData = new URLSearchParams();
+    formData.append('authentic-key', authenticKey);
+    formData.append('tokenkey', authenticKey);
+    formData.append('routeid', routeId);
+    formData.append('number', cleanPhone);
+    formData.append('message', messageText);
 
-    const apiUrl = `http://wapp.powerstext.in/http-tokenkeyapi.php?authentic-key=${authenticKey}&route=1&number=${cleanPhone}&message=${encodedMessage}`;
+    const apiUrl = 'http://wapp.powerstext.in/http-tokenkeyapi.php';
 
-    console.log(`🚀 [WhatsApp Helper] Sending request to Powerstext API for ${cleanPhone}...`);
+    console.log(`🚀 [WhatsApp Helper] Sending POST request to Powerstext for ${cleanPhone}...`);
 
-    const response = await fetch(apiUrl);
+    // POST Request
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: formData
+    });
+
     const responseData = await response.text();
-
     console.log(`📩 [WhatsApp Helper] Response from Powerstext (${cleanPhone}):`, responseData);
 
   } catch (error) {
