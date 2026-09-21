@@ -6,6 +6,9 @@
   <title>Sales Report - Perfect Pizza</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Chart.js for Graphs -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  
   <style>
     * { box-sizing: border-box; }
     body { font-family: 'Inter', sans-serif; background: #f1f5f9; color: #334155; margin: 0; }
@@ -23,7 +26,7 @@
     .btn-pos { background: #22c55e !important; }
     .btn-logout { background: #ef4444 !important; }
 
-    .container { max-width: 1300px; margin: 0 auto; padding: 20px; }
+    .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
 
     .filter-card {
       background: #fff; border-radius: 10px; padding: 18px;
@@ -40,26 +43,13 @@
     .date-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; }
     .field { display: flex; flex-direction: column; gap: 5px; }
     .field label { font-size: 12px; font-weight: 600; color: #64748b; }
-    .field input {
-      padding: 9px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px;
-    }
-    .btn-apply {
-      background: #22c55e; color: #fff; border: none; padding: 10px 18px;
-      border-radius: 6px; font-weight: 600; cursor: pointer;
-    }
-    .btn-reset {
-      background: #fff; border: 1px solid #cbd5e1; color: #334155;
-      padding: 10px 18px; border-radius: 6px; font-weight: 600; cursor: pointer;
-    }
+    .field input { padding: 9px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; }
+    .btn-apply { background: #22c55e; color: #fff; border: none; padding: 10px 18px; border-radius: 6px; font-weight: 600; cursor: pointer; }
+    .btn-reset { background: #fff; border: 1px solid #cbd5e1; color: #334155; padding: 10px 18px; border-radius: 6px; font-weight: 600; cursor: pointer; }
 
-    .kpi-row {
-      display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px;
-    }
+    .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
     @media (max-width: 900px) { .kpi-row { grid-template-columns: 1fr 1fr; } }
-    .kpi {
-      background: #fff; border-radius: 10px; padding: 16px;
-      box-shadow: 0 1px 3px rgba(0,0,0,.06);
-    }
+    .kpi { background: #fff; border-radius: 10px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
     .kpi .t { font-size: 12px; color: #64748b; font-weight: 600; }
     .kpi .v { font-size: 22px; font-weight: 700; margin-top: 6px; }
     .kpi.green .v { color: #16a34a; }
@@ -67,37 +57,39 @@
     .kpi.orange .v { color: #d97706; }
     .kpi.red .v { color: #dc2626; }
 
-    .table-card {
-      background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,.08);
-      overflow: hidden;
-    }
-    .table-top {
-      display: flex; justify-content: space-between; align-items: center;
-      padding: 12px 16px; border-bottom: 1px solid #e2e8f0; gap: 10px; flex-wrap: wrap;
-    }
-    .table-top input {
-      padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; width: 220px;
-    }
+    /* CHARTS & TOP ITEMS GRID */
+    .analytics-grid { display: grid; grid-template-columns: 1fr 2fr 1.5fr; gap: 16px; margin-bottom: 16px; }
+    @media (max-width: 1100px) { .analytics-grid { grid-template-columns: 1fr 1fr; } .top-items-card { grid-column: span 2; } }
+    @media (max-width: 768px) { .analytics-grid { grid-template-columns: 1fr; } .top-items-card { grid-column: span 1; } }
+    
+    .chart-card { background: #fff; border-radius: 10px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.08); display: flex; flex-direction: column; }
+    .chart-card h3 { margin-top: 0; font-size: 15px; color: #334155; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #f1f5f9; }
+    .canvas-container { position: relative; flex-grow: 1; min-height: 250px; width: 100%; display: flex; justify-content: center; align-items: center; }
+    
+    .top-list { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; max-height: 250px; }
+    .top-item { display: flex; justify-content: space-between; align-items: center; font-size: 13px; padding-bottom: 8px; border-bottom: 1px solid #f8fafc; }
+    .top-item:last-child { border: none; }
+    .ti-name { font-weight: 600; color: #475569; display: flex; gap: 8px; align-items: center; }
+    .ti-qty { background: #f1f5f9; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 700; }
+    .ti-rev { color: #16a34a; font-weight: 700; }
+
+    /* Main Table */
+    .table-card { background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,.08); overflow: hidden; }
+    .table-top { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid #e2e8f0; gap: 10px; flex-wrap: wrap; }
+    .table-top input { padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; width: 220px; outline: none; }
     .table-wrap { overflow-x: auto; }
     table { width: 100%; border-collapse: collapse; min-width: 950px; }
-    th, td {
-      padding: 13px 12px; border-bottom: 1px solid #e2e8f0; border-right: 1px solid #f1f5f9;
-      text-align: left; font-size: 13px;
-    }
+    th, td { padding: 13px 12px; border-bottom: 1px solid #e2e8f0; border-right: 1px solid #f1f5f9; text-align: left; font-size: 13px; }
     th { background: #f8fafc; color: #475569; font-weight: 700; }
-    .badge {
-      background: #22c55e; color: #fff; padding: 3px 10px; border-radius: 999px;
-      font-size: 12px; font-weight: 700;
-    }
+    .badge { background: #22c55e; color: #fff; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
     .c-orange { color: #d97706; font-weight: 600; }
     .c-red { color: #dc2626; font-weight: 600; }
     .c-blue { color: #2563eb; font-weight: 600; }
     tfoot td { background: #f1f5f9; font-weight: 700; }
     .empty { text-align: center; padding: 40px; color: #64748b; }
-    .err { color: #dc2626; font-weight: 600; }
 
     @media print {
-      .pos-header, .filter-card, .table-top, .kpi-row { display: none !important; }
+      .pos-header, .filter-card, .table-top, .kpi-row, .analytics-grid { display: none !important; }
       body { background: #fff; }
       .container { padding: 0; }
     }
@@ -105,7 +97,7 @@
 </head>
 <body>
   <header class="pos-header">
-    <h2>📊 Sales Report</h2>
+    <h2>📊 Advanced Sales Report</h2>
     <div class="nav-links">
       <a href="orders.html">📋 Live Orders</a>
       <a href="pos.html" class="btn-pos">← POS</a>
@@ -138,7 +130,7 @@
       </div>
     </div>
 
-    <!-- KPI -->
+    <!-- KPIs -->
     <div class="kpi-row">
       <div class="kpi green">
         <div class="t">NET SALES</div>
@@ -158,7 +150,34 @@
       </div>
     </div>
 
-    <!-- Table -->
+    <!-- NEW: CHARTS & TOP ITEMS -->
+    <div class="analytics-grid">
+      <!-- Payment Pie Chart -->
+      <div class="chart-card">
+        <h3>💳 Payment Methods</h3>
+        <div class="canvas-container">
+          <canvas id="paymentChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Hourly Rush Bar Chart -->
+      <div class="chart-card">
+        <h3>⏰ Hourly Rush (Peak Times)</h3>
+        <div class="canvas-container">
+          <canvas id="hourlyChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Top 10 Items -->
+      <div class="chart-card top-items-card">
+        <h3>🍕 Top 10 Best Sellers</h3>
+        <div class="top-list" id="topItemsList">
+          <div class="empty" style="padding:20px;">Loading items...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Daily Summary Table -->
     <div class="table-card">
       <div class="table-top">
         <strong>Daily Sales Summary</strong>
