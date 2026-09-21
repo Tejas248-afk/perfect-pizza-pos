@@ -6,9 +6,6 @@
   <title>Sales Report - Perfect Pizza</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <!-- Chart.js for Graphs -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  
   <style>
     * { box-sizing: border-box; }
     body { font-family: 'Inter', sans-serif; background: #f1f5f9; color: #334155; margin: 0; }
@@ -43,7 +40,9 @@
     .date-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; }
     .field { display: flex; flex-direction: column; gap: 5px; }
     .field label { font-size: 12px; font-weight: 600; color: #64748b; }
-    .field input { padding: 9px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; }
+    .field input, .field select {
+      padding: 9px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; min-width: 160px;
+    }
     .btn-apply { background: #22c55e; color: #fff; border: none; padding: 10px 18px; border-radius: 6px; font-weight: 600; cursor: pointer; }
     .btn-reset { background: #fff; border: 1px solid #cbd5e1; color: #334155; padding: 10px 18px; border-radius: 6px; font-weight: 600; cursor: pointer; }
 
@@ -57,39 +56,38 @@
     .kpi.orange .v { color: #d97706; }
     .kpi.red .v { color: #dc2626; }
 
-    /* CHARTS & TOP ITEMS GRID */
-    .analytics-grid { display: grid; grid-template-columns: 1fr 2fr 1.5fr; gap: 16px; margin-bottom: 16px; }
-    @media (max-width: 1100px) { .analytics-grid { grid-template-columns: 1fr 1fr; } .top-items-card { grid-column: span 2; } }
-    @media (max-width: 768px) { .analytics-grid { grid-template-columns: 1fr; } .top-items-card { grid-column: span 1; } }
-    
-    .chart-card { background: #fff; border-radius: 10px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.08); display: flex; flex-direction: column; }
-    .chart-card h3 { margin-top: 0; font-size: 15px; color: #334155; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #f1f5f9; }
-    .canvas-container { position: relative; flex-grow: 1; min-height: 250px; width: 100%; display: flex; justify-content: center; align-items: center; }
-    
-    .top-list { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; max-height: 250px; }
-    .top-item { display: flex; justify-content: space-between; align-items: center; font-size: 13px; padding-bottom: 8px; border-bottom: 1px solid #f8fafc; }
-    .top-item:last-child { border: none; }
-    .ti-name { font-weight: 600; color: #475569; display: flex; gap: 8px; align-items: center; }
-    .ti-qty { background: #f1f5f9; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 700; }
-    .ti-rev { color: #16a34a; font-weight: 700; }
-
-    /* Main Table */
     .table-card { background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,.08); overflow: hidden; }
-    .table-top { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid #e2e8f0; gap: 10px; flex-wrap: wrap; }
-    .table-top input { padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; width: 220px; outline: none; }
+    .table-top {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 12px 16px; border-bottom: 1px solid #e2e8f0; gap: 10px; flex-wrap: wrap;
+    }
+    .table-top input {
+      padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; width: 240px; outline: none;
+    }
     .table-wrap { overflow-x: auto; }
-    table { width: 100%; border-collapse: collapse; min-width: 950px; }
-    th, td { padding: 13px 12px; border-bottom: 1px solid #e2e8f0; border-right: 1px solid #f1f5f9; text-align: left; font-size: 13px; }
+    table { width: 100%; border-collapse: collapse; min-width: 1100px; }
+    th, td {
+      padding: 12px 10px; border-bottom: 1px solid #e2e8f0; border-right: 1px solid #f1f5f9;
+      text-align: left; font-size: 13px; white-space: nowrap;
+    }
     th { background: #f8fafc; color: #475569; font-weight: 700; }
-    .badge { background: #22c55e; color: #fff; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+    tfoot td { background: #f1f5f9; font-weight: 700; }
+    .empty { text-align: center; padding: 40px; color: #64748b; }
+    .badge-status {
+      display: inline-block; padding: 3px 10px; border-radius: 999px;
+      font-size: 11px; font-weight: 700; text-transform: capitalize;
+    }
+    .st-completed { background: #dcfce7; color: #166534; }
+    .st-cancelled, .st-canceled { background: #fee2e2; color: #991b1b; }
+    .st-new { background: #dbeafe; color: #1e40af; }
+    .st-preparing, .st-baking { background: #ffedd5; color: #9a3412; }
+    .st-ready { background: #fef9c3; color: #854d0e; }
     .c-orange { color: #d97706; font-weight: 600; }
     .c-red { color: #dc2626; font-weight: 600; }
     .c-blue { color: #2563eb; font-weight: 600; }
-    tfoot td { background: #f1f5f9; font-weight: 700; }
-    .empty { text-align: center; padding: 40px; color: #64748b; }
 
     @media print {
-      .pos-header, .filter-card, .table-top, .kpi-row, .analytics-grid { display: none !important; }
+      .pos-header, .filter-card, .table-top, .kpi-row { display: none !important; }
       body { background: #fff; }
       .container { padding: 0; }
     }
@@ -97,7 +95,7 @@
 </head>
 <body>
   <header class="pos-header">
-    <h2>📊 Advanced Sales Report</h2>
+    <h2>📊 Sales Report (Order-wise)</h2>
     <div class="nav-links">
       <a href="orders.html">📋 Live Orders</a>
       <a href="pos.html" class="btn-pos">← POS</a>
@@ -115,14 +113,26 @@
         <button class="btn-preset" data-range="month" onclick="setRange('month', this)">This Month</button>
         <button class="btn-preset" data-range="all" onclick="setRange('all', this)">All Time</button>
       </div>
+
       <div class="date-row">
         <div class="field">
-          <label>From</label>
+          <label>From Date</label>
           <input type="date" id="startDate">
         </div>
         <div class="field">
-          <label>To</label>
+          <label>To Date</label>
           <input type="date" id="endDate">
+        </div>
+        <div class="field">
+          <label>Order Status</label>
+          <select id="statusFilter">
+            <option value="all">All Status</option>
+            <option value="new">New</option>
+            <option value="preparing">Preparing / Baking</option>
+            <option value="ready">Ready</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
         </div>
         <button class="btn-apply" onclick="loadReport()">✔ Apply</button>
         <button class="btn-reset" onclick="setRange('today')">Reset</button>
@@ -141,65 +151,40 @@
         <div class="v" id="kpiOrders">0</div>
       </div>
       <div class="kpi orange">
-        <div class="t">TAX (GST)</div>
+        <div class="t">TAX</div>
         <div class="v" id="kpiTax">₹0</div>
       </div>
       <div class="kpi red">
-        <div class="t">CANCELLED / RETURNS</div>
+        <div class="t">CANCELLED</div>
         <div class="v" id="kpiCancel">₹0</div>
       </div>
     </div>
 
-    <!-- NEW: CHARTS & TOP ITEMS -->
-    <div class="analytics-grid">
-      <!-- Payment Pie Chart -->
-      <div class="chart-card">
-        <h3>💳 Payment Methods</h3>
-        <div class="canvas-container">
-          <canvas id="paymentChart"></canvas>
-        </div>
-      </div>
-
-      <!-- Hourly Rush Bar Chart -->
-      <div class="chart-card">
-        <h3>⏰ Hourly Rush (Peak Times)</h3>
-        <div class="canvas-container">
-          <canvas id="hourlyChart"></canvas>
-        </div>
-      </div>
-
-      <!-- Top 10 Items -->
-      <div class="chart-card top-items-card">
-        <h3>🍕 Top 10 Best Sellers</h3>
-        <div class="top-list" id="topItemsList">
-          <div class="empty" style="padding:20px;">Loading items...</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Daily Summary Table -->
+    <!-- Order-wise Table (Excel style) -->
     <div class="table-card">
       <div class="table-top">
-        <strong>Daily Sales Summary</strong>
-        <input type="text" id="searchBox" placeholder="Search date..." oninput="filterRows()">
+        <strong>Daily Sales Summary (Invoice-wise)</strong>
+        <input type="text" id="searchBox" placeholder="Search invoice / customer..." oninput="filterRows()">
       </div>
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
-              <th>Period</th>
+              <th>SI.No</th>
+              <th>Date</th>
+              <th>Invoice No.</th>
+              <th>Customer Name</th>
               <th>Orders</th>
               <th>Sub Total</th>
-              <th>Discounts</th>
+              <th>Discount</th>
               <th>Tax</th>
               <th>Charges</th>
-              <th>Gross Sales</th>
-              <th>Returns</th>
               <th>Net Sales</th>
+              <th>Order Status</th>
             </tr>
           </thead>
           <tbody id="reportBody">
-            <tr><td colspan="9" class="empty">Loading...</td></tr>
+            <tr><td colspan="11" class="empty">Loading...</td></tr>
           </tbody>
           <tfoot id="reportFoot" style="display:none;"></tfoot>
         </table>

@@ -1,5 +1,6 @@
 // ==============================
-// ADVANCED REPORT SYSTEM (Orders API)
+// ORDER-WISE SALES REPORT (Excel style)
+// Uses /api/orders  (no reports API needed)
 // ==============================
 
 const RENDER_BACKEND_URL = "https://perfect-pizza-pos.onrender.com";
@@ -34,11 +35,11 @@ if (user.role === "cashier") {
 }
 
 let ALL_ORDERS = [];
-let paymentChartInstance = null;
-let hourlyChartInstance = null;
 
 // ---------- helpers ----------
-function pad(n) { return String(n).padStart(2, "0"); }
+function pad(n) {
+  return String(n).padStart(2, "0");
+}
 
 function toYMD(date) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
@@ -50,10 +51,14 @@ function orderDayKey(order) {
   return toYMD(d);
 }
 
-function orderDayLabel(order) {
+function formatDateLabel(order) {
   const d = new Date(order.createdAt || order.created_at || Date.now());
-  if (isNaN(d.getTime())) return "Unknown";
-  return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  if (isNaN(d.getTime())) return "-";
+  // like: 5-Apr-22
+  const day = d.getDate();
+  const mon = d.toLocaleString("en-IN", { month: "short" });
+  const yy = String(d.getFullYear()).slice(-2);
+  return `${day}-${mon}-${yy}`;
 }
 
 function isCancelled(order) {
@@ -65,7 +70,24 @@ function num(v) {
   const n = Number(v);
   return isNaN(n) ? 0 : n;
 }
-function money(n) { return `₹${num(n).toFixed(2)}`; }
+
+function money(n) {
+  return `₹${num(n).toFixed(2)}`;
+}
+
+function itemCount(order) {
+  if (!Array.isArray(order.items)) return 0;
+  return order.items.reduce((sum, it) => sum + (num(it.qty) || 1), 0);
+}
+
+function statusClass(status) {
+  const s = String(status || "").toLowerCase();
+  if (s.includes("complete")) return "st-completed";
+  if (s.includes("cancel")) return "st-cancelled";
+  if (s.includes("ready")) return "st-ready";
+  if (s.includes("prepar") || s.includes("bak")) return "st-preparing";
+  return "st-new";
+}
 
 function logout() {
   localStorage.clear();
@@ -98,6 +120,7 @@ function setRange(type, btn) {
   } else if (type === "all") {
     document.getElementById("startDate").value = "";
     document.getElementById("endDate").value = "";
+    document.getElementById("statusFilter").value = "all";
     buildReport();
     return;
   }
@@ -110,31 +133,50 @@ function setRange(type, btn) {
 // ---------- fetch orders ----------
 async function fetchAllOrders() {
   const tbody = document.getElementById("reportBody");
-  tbody.innerHTML = `<tr><td colspan="9" class="empty">⏳ Fetching all orders...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="11" class="empty">⏳ Loading orders...</td></tr>`;
 
-  const urls = [`${API_URL}/orders?limit=5000`, `${API_URL}/orders`, `${API_URL}/orders/all`];
+  const urls = [
+    `${API_URL}/orders?limit=5000`,
+    `${API_URL}/orders`,
+    `${API_URL}/orders/all`,
+  ];
+
   let orders = [];
 
   for (const url of urls) {
     try {
-      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.status === 401 || res.status === 403) {
+        alert("Session expired. Please login again.");
+        logout();
+        return;
+      }
       if (!res.ok) continue;
+
       const data = await res.json();
-      orders = Array.isArray(data) ? data : (data.orders || data.data || []);
+      orders = Array.isArray(data) ? data : data.orders || data.data || [];
+      console.log("✅ Orders loaded:", orders.length, "from", url);
       break;
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+    }
   }
 
   ALL_ORDERS = orders || [];
   buildReport();
 }
 
-// ---------- Build Analytics & Reports ----------
+// ---------- build order-wise report ----------
 function buildReport() {
   const start = document.getElementById("startDate").value;
   const end = document.getElementById("endDate").value;
+  const statusFilter = (document.getElementById("statusFilter").value || "all").toLowerCase();
 
   let list = ALL_ORDERS.slice();
+
+  // Date filter
   if (start && end) {
     list = list.filter((o) => {
       const key = orderDayKey(o);
@@ -142,204 +184,144 @@ function buildReport() {
     });
   }
 
-  const map = {};
-  
-  // Analytics Data Objects
-  let paymentData = { cash: 0, upi: 0, card: 0 };
-  let hourlyData = new Array(24).fill(0);
-  let topItemsMap = {};
+  // Status filter
+  if (statusFilter !== "all") {
+    list = list.filter((o) => {
+      const s = String(o.status || "").toLowerCase().trim();
+      if (statusFilter === "preparing") {
+        return s === "preparing" || s === "baking" || s === "in-kitchen";
+      }
+      if (statusFilter === "cancelled") {
+        return s === "cancelled" || s === "canceled" || s === "cancel" || s === "rejected";
+      }
+      return s === statusFilter;
+    });
+  }
 
-  list.forEach((o) => {
-    const key = orderDayKey(o);
-    const label = orderDayLabel(o);
-    if (!map[key]) {
-      map[key] = { date: label, dateKey: key, orders: 0, subTotal: 0, discount: 0, tax: 0, charges: 0, grossSales: 0, cancelledAmount: 0, cancelledOrders: 0, netSales: 0 };
-    }
+  // Newest first
+  list.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 
-    const day = map[key];
-    const grand = num(o.grandTotal ?? o.totalAmount ?? o.total);
-    const tax = num(o.gstAmount ?? o.tax ?? o.gst);
-    const discount = num(o.discount);
-    const charges = num(o.deliveryCharge ?? o.charges ?? o.packingCharge);
-    const subTotal = num(o.subTotal) || Math.max(grand - tax - charges + discount, 0);
-
-    if (isCancelled(o)) {
-      day.cancelledOrders += 1;
-      day.cancelledAmount += grand;
-    } else {
-      // 1. Valid Order Totals
-      day.orders += 1;
-      day.subTotal += subTotal;
-      day.discount += discount;
-      day.tax += tax;
-      day.charges += charges;
-      day.grossSales += grand;
-      day.netSales += grand;
-
-      // 2. Payment Split (Only Valid Orders)
-      let pm = String(o.paymentMethod || "cash").toLowerCase().trim();
-      if (pm === "online" || pm === "qr") pm = "upi";
-      if (paymentData[pm] !== undefined) paymentData[pm] += grand;
-      else paymentData.cash += grand; // default to cash
-
-      // 3. Hourly Rush
-      const d = new Date(o.createdAt || o.created_at || Date.now());
-      if (!isNaN(d.getTime())) hourlyData[d.getHours()] += 1;
-
-      // 4. Top Items
-      (o.items || []).forEach(item => {
-        const name = item.productName || item.product?.name || "Unknown Item";
-        const qty = num(item.qty) || 1;
-        const p = num(item.basePrice) + num(item.crustPrice) + num(item.addonsTotal);
-        const rev = (p || num(item.price) || 0) * qty;
-
-        if (!topItemsMap[name]) topItemsMap[name] = { qty: 0, rev: 0 };
-        topItemsMap[name].qty += qty;
-        topItemsMap[name].rev += rev;
-      });
-    }
-  });
-
-  const rows = Object.values(map).sort((a, b) => b.dateKey.localeCompare(a.dateKey));
-  
-  // Render Everything
-  renderTableAndKPIs(rows);
-  renderCharts(paymentData, hourlyData);
-  renderTopItems(topItemsMap);
+  renderReport(list);
 }
 
-// ---------- RENDER FUNCTIONS ----------
-
-function renderTableAndKPIs(rows) {
+function renderReport(list) {
   const tbody = document.getElementById("reportBody");
   const tfoot = document.getElementById("reportFoot");
 
-  let kNet = 0, kOrders = 0, kTax = 0, kCancel = 0, kCancelCount = 0;
-  let html = "";
-  let t = { orders: 0, subTotal: 0, discount: 0, tax: 0, charges: 0, gross: 0, returns: 0, net: 0 };
+  let kNet = 0;
+  let kOrders = 0;
+  let kTax = 0;
+  let kCancelAmt = 0;
+  let kCancelCount = 0;
 
-  rows.forEach((r) => {
-    kNet += r.netSales; kOrders += r.orders; kTax += r.tax;
-    kCancel += r.cancelledAmount; kCancelCount += r.cancelledOrders;
+  let tItems = 0;
+  let tSub = 0;
+  let tDisc = 0;
+  let tTax = 0;
+  let tCharges = 0;
+  let tNet = 0;
 
-    t.orders += r.orders; t.subTotal += r.subTotal; t.discount += r.discount;
-    t.tax += r.tax; t.charges += r.charges; t.gross += r.grossSales;
-    t.returns += r.cancelledAmount; t.net += r.netSales;
-
-    html += `<tr class="data-row">
-        <td><b>${r.date}</b></td>
-        <td><span class="badge">${r.orders}</span></td>
-        <td>${money(r.subTotal)}</td>
-        <td class="c-orange">${money(r.discount)}</td>
-        <td>${money(r.tax)}</td>
-        <td>${money(r.charges)}</td>
-        <td>${money(r.grossSales)}</td>
-        <td class="c-red">${money(r.cancelledAmount)}</td>
-        <td class="c-blue">${money(r.netSales)}</td>
-      </tr>`;
-  });
-
-  document.getElementById("kpiNet").innerText = money(kNet);
-  document.getElementById("kpiOrders").innerText = kOrders;
-  document.getElementById("kpiTax").innerText = money(kTax);
-  document.getElementById("kpiCancel").innerText = `${money(kCancel)} (${kCancelCount})`;
-
-  if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="9" class="empty">No sales data found for selected period.</td></tr>`;
+  if (!list.length) {
+    document.getElementById("kpiNet").innerText = "₹0.00";
+    document.getElementById("kpiOrders").innerText = "0";
+    document.getElementById("kpiTax").innerText = "₹0.00";
+    document.getElementById("kpiCancel").innerText = "₹0.00";
+    tbody.innerHTML = `<tr><td colspan="11" class="empty">No sales data found for selected period.<br><small>Orders in memory: ${ALL_ORDERS.length}</small></td></tr>`;
     tfoot.style.display = "none";
-  } else {
-    tbody.innerHTML = html;
-    tfoot.innerHTML = `<tr>
-      <td>TOTAL</td><td><span class="badge">${t.orders}</span></td><td>${money(t.subTotal)}</td>
-      <td class="c-orange">${money(t.discount)}</td><td>${money(t.tax)}</td><td>${money(t.charges)}</td>
-      <td>${money(t.gross)}</td><td class="c-red">${money(t.returns)}</td><td class="c-blue">${money(t.net)}</td>
-    </tr>`;
-    tfoot.style.display = "table-footer-group";
-  }
-}
-
-function renderCharts(pay, hourly) {
-  // Destroy old charts if exist
-  if (paymentChartInstance) paymentChartInstance.destroy();
-  if (hourlyChartInstance) hourlyChartInstance.destroy();
-
-  // 1. Payment Pie Chart
-  const ctxPay = document.getElementById('paymentChart').getContext('2d');
-  paymentChartInstance = new Chart(ctxPay, {
-    type: 'doughnut',
-    data: {
-      labels: ['UPI / Online', 'Cash', 'Card'],
-      datasets: [{
-        data: [pay.upi, pay.cash, pay.card],
-        backgroundColor: ['#3b82f6', '#22c55e', '#f59e0b'],
-        borderWidth: 0
-      }]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { position: 'bottom', labels: { boxWidth: 12 } } }
-    }
-  });
-
-  // 2. Hourly Rush Bar Chart
-  const labels = Array.from({length: 24}, (_, i) => {
-    const ampm = i >= 12 ? 'PM' : 'AM';
-    const h = i % 12 || 12;
-    return `${h} ${ampm}`;
-  });
-
-  const ctxHour = document.getElementById('hourlyChart').getContext('2d');
-  hourlyChartInstance = new Chart(ctxHour, {
-    type: 'bar',
-    data: {
-      labels: labels,
-      datasets: [{
-        label: 'Orders',
-        data: hourly,
-        backgroundColor: '#14b8a6',
-        borderRadius: 4
-      }]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      scales: {
-        y: { beginAtZero: true, ticks: { stepSize: 1 } },
-        x: { grid: { display: false } }
-      },
-      plugins: { legend: { display: false } }
-    }
-  });
-}
-
-function renderTopItems(itemsMap) {
-  const container = document.getElementById("topItemsList");
-  
-  const sortedItems = Object.keys(itemsMap)
-    .map(name => ({ name, qty: itemsMap[name].qty, rev: itemsMap[name].rev }))
-    .sort((a, b) => b.qty - a.qty)
-    .slice(0, 10); // Take Top 10
-
-  if (sortedItems.length === 0) {
-    container.innerHTML = `<div class="empty" style="padding:20px;">No items sold yet.</div>`;
     return;
   }
 
-  container.innerHTML = sortedItems.map((it, idx) => `
-    <div class="top-item">
-      <div class="ti-name">
-        <span style="color:#94a3b8;">#${idx+1}</span>
-        ${it.name}
-        <span class="ti-qty">${it.qty}x</span>
-      </div>
-      <div class="ti-rev">${money(it.rev)}</div>
-    </div>
-  `).join('');
+  let html = "";
+
+  list.forEach((o, idx) => {
+    const cancelled = isCancelled(o);
+
+    const subTotal = num(o.subtotal ?? o.subTotal);
+    const discount = num(o.discount);
+    const tax = num(o.gstAmount ?? o.tax ?? o.gst);
+    const charges = num(o.deliveryCharge) + num(o.serviceCharge) + num(o.charges);
+    const net = num(o.grandTotal ?? o.totalAmount ?? o.total);
+    const itemsQty = itemCount(o);
+
+    const custName =
+      o.customer?.name && o.customer.name !== "N/A"
+        ? o.customer.name
+        : o.customerName || "Guest";
+
+    const invoice = o.orderNumber || o.invoiceNo || "-";
+    const status = o.status || "-";
+
+    // KPIs
+    if (cancelled) {
+      kCancelAmt += net;
+      kCancelCount += 1;
+    } else {
+      kNet += net;
+      kOrders += 1;
+      kTax += tax;
+
+      tItems += itemsQty;
+      tSub += subTotal || Math.max(net - tax - charges + discount, 0);
+      tDisc += discount;
+      tTax += tax;
+      tCharges += charges;
+      tNet += net;
+    }
+
+    // For cancelled, still show row but net can be shown as 0 or actual — sheet shows values; we show actual + status
+    const rowSub = subTotal || Math.max(net - tax - charges + discount, 0);
+    const rowNet = cancelled ? 0 : net; // cancelled net sales = 0 in total; still show amount in red optional
+
+    html += `
+      <tr class="data-row">
+        <td>${idx + 1}</td>
+        <td>${formatDateLabel(o)}</td>
+        <td><b>${invoice}</b></td>
+        <td>${custName}</td>
+        <td>${itemsQty}</td>
+        <td>${money(rowSub)}</td>
+        <td class="c-orange">${money(discount)}</td>
+        <td>${money(tax)}</td>
+        <td>${money(charges)}</td>
+        <td class="${cancelled ? "c-red" : "c-blue"}">${money(cancelled ? net : net)}</td>
+        <td><span class="badge-status ${statusClass(status)}">${status}</span></td>
+      </tr>
+    `;
+
+    // If you want cancelled excluded from visible net column display as 0:
+    // change above net cell to: ${money(cancelled ? 0 : net)}
+  });
+
+  // KPI cards
+  document.getElementById("kpiNet").innerText = money(kNet);
+  document.getElementById("kpiOrders").innerText = kOrders;
+  document.getElementById("kpiTax").innerText = money(kTax);
+  document.getElementById("kpiCancel").innerText = `${money(kCancelAmt)} (${kCancelCount})`;
+
+  tbody.innerHTML = html;
+
+  // Footer subtotal (only non-cancelled contribution like sheet "Subtotal")
+  tfoot.innerHTML = `
+    <tr>
+      <td colspan="4" style="text-align:right;">Subtotal</td>
+      <td>${tItems}</td>
+      <td>${money(tSub)}</td>
+      <td class="c-orange">${money(tDisc)}</td>
+      <td>${money(tTax)}</td>
+      <td>${money(tCharges)}</td>
+      <td class="c-blue">${money(tNet)}</td>
+      <td></td>
+    </tr>
+  `;
+  tfoot.style.display = "table-footer-group";
 }
 
 function filterRows() {
   const q = (document.getElementById("searchBox").value || "").toLowerCase();
-  document.querySelectorAll(".data-row").forEach((r) => {
-    r.style.display = r.cells[0].innerText.toLowerCase().includes(q) ? "" : "none";
+  document.querySelectorAll(".data-row").forEach((row) => {
+    const invoice = row.cells[2]?.innerText.toLowerCase() || "";
+    const name = row.cells[3]?.innerText.toLowerCase() || "";
+    row.style.display = invoice.includes(q) || name.includes(q) ? "" : "none";
   });
 }
 
@@ -348,7 +330,9 @@ function loadReport() {
   buildReport();
 }
 
+// status dropdown change pe auto apply
 document.addEventListener("DOMContentLoaded", () => {
-  setRange("all"); 
+  document.getElementById("statusFilter")?.addEventListener("change", buildReport);
+  setRange("today");
   fetchAllOrders();
 });
