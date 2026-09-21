@@ -1,5 +1,4 @@
 // --- URLs & CONFIGURATION (DEPLOYMENT READY) ---
-// 🔥 APNA RENDER BACKEND URL YAHAN DALEIN (Bina aakhiri slash '/')
 const RENDER_BACKEND_URL = "https://perfect-pizza-pos.onrender.com"; 
 
 window.SOCKET_URL = (window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1'))
@@ -55,7 +54,6 @@ document.addEventListener('DOMContentLoaded', () => {
   if (userNameEl && user) userNameEl.innerText = `👤 ${user.name} (${user.role})`;
 });
 
-// ------------------------------------
 // --- Global State ---
 let menuData = { categories: [], products: [], crusts: [], addons: [] };
 let currentCategory = null;
@@ -195,7 +193,7 @@ function renderProducts(categoryId, searchQuery = '') {
   });
 }
 
-// --- 2. Customer Lookup & Auto Fill ---
+// --- 2. Customer Lookup & Auto Fill (FIXED) ---
 let lookupTimer = null;
 document.getElementById('customerPhone')?.addEventListener('input', (e) => {
   const phone = e.target.value.trim();
@@ -231,36 +229,54 @@ async function searchCustomer(phone) {
 
     currentCustomer = data;
     const c = data.customer || {};
+    const ordersList = data.previousOrders || [];
+
+    // Find real name if profile says "Guest"
+    let displayName = c.name || '';
+    if ((!displayName || displayName.toLowerCase() === 'guest') && ordersList.length > 0) {
+      const orderWithName = ordersList.find(o => o.customer?.name && o.customer.name.toLowerCase() !== 'guest');
+      if (orderWithName) {
+        displayName = orderWithName.customer.name;
+      }
+    }
+    if (!displayName) displayName = 'Guest';
 
     const nameInput = document.getElementById('customerName');
     const addrInput = document.getElementById('customerAddress');
 
-    if (nameInput) nameInput.value = c.name || '';
+    if (nameInput) nameInput.value = (displayName !== 'Guest') ? displayName : '';
     if (addrInput) {
-      addrInput.value = c.address || c.deliveryAddress || '';
-      if ((c.address || c.deliveryAddress || '').trim() !== '') {
+      const addr = c.address || c.deliveryAddress || (ordersList[0]?.deliveryAddress) || '';
+      addrInput.value = addr;
+      if (addr.trim() !== '') {
         addrInput.style.display = 'block';
       }
     }
 
-    document.getElementById('ccName').innerText = c.name || 'Customer';
+    // Stats calculation fallbacks
+    const totalOrdersCount = c.totalOrders || ordersList.length || 0;
+    const totalSpentAmt = c.totalSpent || ordersList.reduce((sum, o) => sum + (Number(o.grandTotal) || 0), 0);
+    const coinsBalance = c.rewardCoins || 0;
+
+    document.getElementById('ccName').innerText = displayName;
     document.getElementById('ccPhone').innerText = c.phone || cleanPhone;
-    document.getElementById('ccCoins').innerText = c.rewardCoins || 0;
-    document.getElementById('ccOrders').innerText = c.totalOrders || 0;
-    document.getElementById('ccSpent').innerText = c.totalSpent || 0;
+    document.getElementById('ccCoins').innerText = coinsBalance;
+    document.getElementById('ccOrders').innerText = totalOrdersCount;
+    document.getElementById('ccSpent').innerText = totalSpentAmt;
+
+    // Reset collapse state FIRST
+    resetPrevOrdersCollapse();
 
     const prevBox = document.getElementById('ccPrevOrders');
     const countEl = document.getElementById('prevOrdersCount');
-    const ordersList = data.previousOrders || [];
 
+    // NOW update badge count to correct orders count
     if (countEl) countEl.innerText = String(ordersList.length);
-    resetPrevOrdersCollapse(); 
 
     if (prevBox) {
       if (ordersList.length === 0) {
         prevBox.innerHTML = '<div class="cc-prev-empty">No previous orders found</div>';
       } else {
-        // 🔥 YAHAN BUTTON ADD KIYA GAYA HAI 🔥
         prevBox.innerHTML = ordersList
           .map((o) => {
             const d = new Date(o.createdAt).toLocaleDateString('en-IN');
@@ -281,16 +297,15 @@ async function searchCustomer(phone) {
 
     const redeemToggle = document.getElementById('redeemCoinsToggle');
     if (redeemToggle) {
-      redeemToggle.disabled = (c.rewardCoins || 0) < 20;
+      redeemToggle.disabled = coinsBalance < 20;
     }
-    document.getElementById('availableCoinsText').innerText = c.rewardCoins || 0;
+    document.getElementById('availableCoinsText').innerText = coinsBalance;
     calculateTotals();
   } catch (err) {
     console.error('Customer lookup error:', err);
   }
 }
 
-// 🔥 YAHAN PURANE ORDER KO PRINT KARNE KA NAYA FUNCTION HAI 🔥
 window.printPastOrder = async function(orderId) {
   try {
     const btn = event.currentTarget;
@@ -298,7 +313,6 @@ window.printPastOrder = async function(orderId) {
     btn.innerText = '⏳';
     btn.disabled = true;
 
-    // Fetch the full order details from backend
     const res = await fetch(`${API_URL}/orders/${orderId}`, {
       headers: { Authorization: `Bearer ${token}` }
     });
@@ -306,16 +320,10 @@ window.printPastOrder = async function(orderId) {
     if (!res.ok) throw new Error("Failed to fetch order details");
     const order = await res.json();
 
-    // Use current customer data if available
     const custData = currentCustomer ? currentCustomer.customer : null;
-    
-    // Call the existing receipt generator
     generatePrintReceipt(order, custData);
-    
-    // Trigger Print
     window.print();
 
-    // Reset button
     btn.innerText = oldText;
     btn.disabled = false;
   } catch (err) {
@@ -375,7 +383,6 @@ function resetPrevOrdersCollapse() {
   const box = document.getElementById('ccPrevOrdersBox');
   const btn = document.getElementById('prevOrdersToggle');
   const plus = document.getElementById('prevOrdersPlus');
-  const countEl = document.getElementById('prevOrdersCount');
 
   if (box) {
     box.classList.remove('open');
@@ -383,7 +390,6 @@ function resetPrevOrdersCollapse() {
   }
   if (btn) btn.classList.remove('open');
   if (plus) plus.innerText = '+';
-  if (countEl) countEl.innerText = '0';
 }
 
 // --- 3. Customization Modal ---
@@ -694,7 +700,6 @@ function toggleDeliveryFields() {
   calculateTotals();
 }
 
-// Edit Charges Popup logic
 window.openChargesModal = function () {
   const modal = document.getElementById('chargesModal');
   if (!modal) return;
@@ -773,7 +778,6 @@ function calculateTotals() {
   window._rewardCoinsUsed = coinsToUse;
   window._rewardCoinsValue = coinsDiscount;
 
-  // Live mini preview inside main cart panel update
   const pd = document.getElementById('previewDiscount');
   const pc = document.getElementById('previewCoins');
   const ps = document.getElementById('previewService');
@@ -793,7 +797,6 @@ document
   .querySelectorAll('input[name="orderType"]')
   .forEach((r) => r.addEventListener('change', toggleDeliveryFields));
 
-// Charges Modal Controls
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') closeChargesModal();
 });
@@ -898,7 +901,6 @@ document.getElementById('payBtn')?.addEventListener('click', async () => {
 
       if (!res.ok) throw new Error(data.message || 'Order failed');
 
-      // 🔥 ONLY Print Bill (WhatsApp backend automatically bhejega)
       generatePrintReceipt(data.order, data.customerData);
       window.print();
 

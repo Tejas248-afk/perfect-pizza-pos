@@ -46,11 +46,9 @@ const createOrder = async (req, res) => {
       const inputName = customerName ? customerName.trim() : '';
       const inputAddr = (deliveryAddress || customerAddress || '').trim();
 
-      // Find customer by phone number
       customer = await Customer.findOne({ phone: cleanPhone });
 
       if (!customer) {
-        // Naya Customer Profile
         customer = new Customer({
           branch: branchId,
           phone: cleanPhone,
@@ -61,7 +59,6 @@ const createOrder = async (req, res) => {
           totalSpent: 0
         });
       } else {
-        // Existing Customer -> Update Name & Address if provided
         if (inputName && inputName.toLowerCase() !== 'guest') {
           customer.name = inputName;
         }
@@ -90,11 +87,9 @@ const createOrder = async (req, res) => {
       customer.totalOrders = (Number(customer.totalOrders) || 0) + 1;
       customer.totalSpent = (Number(customer.totalSpent) || 0) + Number(grandTotal);
 
-      // Persist Customer Changes to MongoDB
       await customer.save();
     }
 
-    // 🔥 FAIL-SAFE ADDRESS RESOLUTION (Priority: deliveryAddress -> customerAddress -> customer.address)
     let finalAddress = (deliveryAddress || customerAddress || '').trim();
     if (!finalAddress && customer && customer.address) {
       finalAddress = customer.address;
@@ -108,7 +103,7 @@ const createOrder = async (req, res) => {
       customer: customer
         ? { name: customer.name, phone: customer.phone, id: customer._id }
         : { name: (customerName && customerName !== 'Guest') ? customerName : 'Guest', phone: customerPhone || 'N/A' },
-      deliveryAddress: finalAddress, // Guaranteed Address
+      deliveryAddress: finalAddress,
       items,
       subtotal: Number(subtotal) || 0,
       discount: Number(discount) || 0,
@@ -125,7 +120,6 @@ const createOrder = async (req, res) => {
 
     const createdOrder = await order.save();
 
-    // 4. Emit real-time event to Kitchen Display & Orders Page
     const io = req.app.get('io');
     if (io) {
       io.emit('newOrder', createdOrder);
@@ -142,7 +136,7 @@ const createOrder = async (req, res) => {
   }
 };
 
-// @desc    Lookup customer by phone
+// @desc    Lookup customer by phone (WITH AUTO SYNC FIX)
 // @route   GET /api/orders/customer/:phone
 // @access  Private
 const lookupCustomer = async (req, res) => {
@@ -150,25 +144,79 @@ const lookupCustomer = async (req, res) => {
     const rawPhone = req.params.phone ? req.params.phone.trim() : '';
     const cleanPhone = rawPhone.replace(/[^0-9]/g, '').slice(-10);
 
-    if (!cleanPhone) {
+    if (!cleanPhone || cleanPhone.length < 10) {
       return res.status(400).json({ message: 'Valid 10-digit phone number is required' });
     }
 
-    const customer = await Customer.findOne({ phone: cleanPhone });
-    if (!customer) {
-      return res.json({ found: false });
-    }
-
-    // Fetch Last 5 orders for this customer
-    const previousOrders = await Order.find({
+    // Fetch all previous orders for this phone number
+    const allOrders = await Order.find({
       $or: [
         { 'customer.phone': cleanPhone },
-        { 'customer.id': customer._id },
-      ],
-    })
-      .sort({ createdAt: -1 })
-      .limit(5)
-      .select('orderNumber grandTotal orderType createdAt status items deliveryAddress');
+        { 'customer.phone': rawPhone }
+      ]
+    }).sort({ createdAt: -1 });
+
+    let customer = await Customer.findOne({ phone: cleanPhone });
+
+    // Check if there is a real name in order history
+    let realNameFromOrders = '';
+    allOrders.forEach(o => {
+      const n = o.customer?.name || o.customerName || '';
+      if (n && n.toLowerCase() !== 'guest' && !realNameFromOrders) {
+        realNameFromOrders = n;
+      }
+    });
+
+    const nonCancelled = allOrders.filter(o => !['cancelled', 'canceled'].includes(String(o.status || '').toLowerCase()));
+    const computedOrdersCount = nonCancelled.length;
+    const computedSpent = nonCancelled.reduce((sum, o) => sum + (Number(o.grandTotal) || 0), 0);
+
+    if (!customer) {
+      if (allOrders.length === 0) {
+        return res.json({ found: false });
+      }
+      // Auto-create Customer profile if missing
+      const computedCoins = nonCancelled.reduce((sum, o) => sum + (Number(o.rewardCoinsEarned) || (o.grandTotal > 100 ? 20 : 10)), 0);
+      customer = new Customer({
+        phone: cleanPhone,
+        name: realNameFromOrders || 'Guest',
+        rewardCoins: computedCoins,
+        totalOrders: computedOrdersCount,
+        totalSpent: computedSpent
+      });
+      await customer.save();
+    } else {
+      let needsSave = false;
+      // Sync Real Name
+      if ((!customer.name || customer.name.toLowerCase() === 'guest') && realNameFromOrders) {
+        customer.name = realNameFromOrders;
+        needsSave = true;
+      }
+      // Sync Stats if desynced
+      if ((customer.totalOrders || 0) === 0 && computedOrdersCount > 0) {
+        customer.totalOrders = computedOrdersCount;
+        customer.totalSpent = computedSpent;
+        if ((customer.rewardCoins || 0) === 0) {
+          customer.rewardCoins = nonCancelled.reduce((sum, o) => sum + (Number(o.rewardCoinsEarned) || (o.grandTotal > 100 ? 20 : 10)), 0);
+        }
+        needsSave = true;
+      }
+      if (needsSave) {
+        await customer.save();
+      }
+    }
+
+    const previousOrders = allOrders.slice(0, 5).map(o => ({
+      _id: o._id,
+      orderNumber: o.orderNumber,
+      grandTotal: o.grandTotal,
+      orderType: o.orderType,
+      createdAt: o.createdAt,
+      status: o.status,
+      items: o.items,
+      deliveryAddress: o.deliveryAddress,
+      customer: o.customer
+    }));
 
     res.json({
       found: true,
@@ -181,9 +229,6 @@ const lookupCustomer = async (req, res) => {
   }
 };
 
-// @desc    Get orders (today / by status)
-// @route   GET /api/orders
-// @access  Private
 const getOrders = async (req, res) => {
   try {
     const branchId = req.user?.branch?._id || req.user?.branch;
@@ -212,9 +257,6 @@ const getOrders = async (req, res) => {
   }
 };
 
-// @desc    Get order by ID
-// @route   GET /api/orders/:id
-// @access  Private
 const getOrderById = async (req, res) => {
   try {
     const order = await Order.findById(req.params.id);
@@ -225,9 +267,6 @@ const getOrderById = async (req, res) => {
   }
 };
 
-// @desc    Update order status
-// @route   PATCH /api/orders/:id/status
-// @access  Private
 const updateOrderStatus = async (req, res) => {
   try {
     const { status } = req.body;
@@ -243,7 +282,6 @@ const updateOrderStatus = async (req, res) => {
     }
     await order.save();
 
-    // Emit status update to Kitchen & Orders Page
     const io = req.app.get('io');
     if (io) {
       io.emit('orderUpdated', order);
