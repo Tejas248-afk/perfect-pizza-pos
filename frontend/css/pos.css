@@ -937,3 +937,34 @@ body.night-mode .coins-modal-row {
   border-color: #374151 !important;
   color: #F9FAFB !important;
 }
+/* Previous Order Invoice Button */
+.btn-prev-invoice {
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  color: #334155;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.2s ease;
+  margin-left: 10px;
+}
+
+.btn-prev-invoice:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+  border-color: #94a3b8;
+}
+
+/* Taki list me order detail aur button aamne-samne set ho jaye */
+.cc-prev-order-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px;
+  border-bottom: 1px solid #f1f5f9;
+}

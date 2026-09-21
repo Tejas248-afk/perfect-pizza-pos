@@ -254,16 +254,24 @@ async function searchCustomer(phone) {
     const ordersList = data.previousOrders || [];
 
     if (countEl) countEl.innerText = String(ordersList.length);
-    resetPrevOrdersCollapse(); // Always collapse on new load
+    resetPrevOrdersCollapse(); 
 
     if (prevBox) {
       if (ordersList.length === 0) {
         prevBox.innerHTML = '<div class="cc-prev-empty">No previous orders found</div>';
       } else {
+        // 🔥 YAHAN BUTTON ADD KIYA GAYA HAI 🔥
         prevBox.innerHTML = ordersList
           .map((o) => {
             const d = new Date(o.createdAt).toLocaleDateString('en-IN');
-            return `<div class="cc-prev-item"><span><b>${o.orderNumber}</b> (${o.orderType})</span><span>₹${o.grandTotal} · ${d}</span></div>`;
+            return `
+            <div class="cc-prev-order-item">
+              <span><b>${o.orderNumber}</b> (${o.orderType})</span>
+              <span style="display:flex; align-items:center;">
+                ₹${o.grandTotal} · ${d}
+                <button type="button" class="btn-prev-invoice" onclick="printPastOrder('${o._id}')" title="View/Print Bill">🧾 Bill</button>
+              </span>
+            </div>`;
           })
           .join('');
       }
@@ -279,6 +287,42 @@ async function searchCustomer(phone) {
     calculateTotals();
   } catch (err) {
     console.error('Customer lookup error:', err);
+  }
+}
+
+// 🔥 YAHAN PURANE ORDER KO PRINT KARNE KA NAYA FUNCTION HAI 🔥
+window.printPastOrder = async function(orderId) {
+  try {
+    const btn = event.currentTarget;
+    const oldText = btn.innerText;
+    btn.innerText = '⏳';
+    btn.disabled = true;
+
+    // Fetch the full order details from backend
+    const res = await fetch(`${API_URL}/orders/${orderId}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    
+    if (!res.ok) throw new Error("Failed to fetch order details");
+    const order = await res.json();
+
+    // Use current customer data if available
+    const custData = currentCustomer ? currentCustomer.customer : null;
+    
+    // Call the existing receipt generator
+    generatePrintReceipt(order, custData);
+    
+    // Trigger Print
+    window.print();
+
+    // Reset button
+    btn.innerText = oldText;
+    btn.disabled = false;
+  } catch (err) {
+    console.error("Print Past Order Error:", err);
+    alert("Could not load bill details!");
+    event.currentTarget.innerText = '🧾 Bill';
+    event.currentTarget.disabled = false;
   }
 }
 
