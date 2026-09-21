@@ -9,7 +9,7 @@
   <style>
     body { font-family: 'Inter', sans-serif; background-color: #f4f7f6; color: #334155; margin: 0; padding: 0; }
     
-    /* Navbar */
+    /* Header Navbar */
     .pos-header { background: #1e293b; color: white; padding: 15px 25px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
     .pos-header h2 { margin: 0; font-size: 20px; font-weight: 600; }
     .nav-links { display: flex; gap: 10px; }
@@ -20,7 +20,7 @@
 
     .container { padding: 25px; max-width: 1400px; margin: 0 auto; }
 
-    /* Top Filters */
+    /* Top Filters Section */
     .filter-section { display: flex; flex-direction: column; gap: 15px; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 20px; border-top: 4px solid #14b8a6; }
     
     .preset-btns { display: flex; gap: 10px; flex-wrap: wrap; }
@@ -116,7 +116,7 @@
       </div>
     </div>
 
-    <!-- The Report Table -->
+    <!-- The 9-Column ERP Table -->
     <div class="table-container">
       <table id="reportTable">
         <thead>
@@ -133,7 +133,7 @@
           </tr>
         </thead>
         <tbody id="reportBody">
-          <tr><td colspan="9" class="loader">Loading...</td></tr>
+          <tr><td colspan="9" class="loader">Loading sales data...</td></tr>
         </tbody>
         <tfoot id="reportFoot" style="display:none;"></tfoot>
       </table>

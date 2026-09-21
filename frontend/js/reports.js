@@ -27,13 +27,14 @@ if (user.role === 'cashier') {
 }
 
 // ------------------------------------
-// IST Date String Helper (YYYY-MM-DD)
+// Helper: Get IST Date String (YYYY-MM-DD)
 // ------------------------------------
 function getISTDateString(d = new Date()) {
   const ist = new Date(d.getTime() + (5.5 * 60 * 60 * 1000));
   return ist.toISOString().split('T')[0];
 }
 
+// Preset Filter Handler
 function setPreset(type, event) {
   document.querySelectorAll('.btn-preset').forEach(b => b.classList.remove('active'));
   
@@ -81,7 +82,7 @@ async function fetchReports() {
   
   if (!startDate || !endDate) return alert("Please select both dates");
 
-  tbody.innerHTML = '<tr><td colspan="9" class="loader"><i class="fa-solid fa-spinner fa-spin"></i> Loading sales data...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="9" class="loader"><i class="fa-solid fa-spinner fa-spin"></i> Fetching sales data...</td></tr>';
   tfoot.style.display = 'none';
 
   try {
@@ -101,14 +102,14 @@ async function fetchReports() {
 }
 
 // ------------------------------------
-// Render Table & Totals
+// Render Table & Foot Totals
 // ------------------------------------
 function renderTable(dailyData) {
   const tbody = document.getElementById('reportBody');
   const tfoot = document.getElementById('reportFoot');
 
   if (dailyData.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:20px;">No sales data found for selected period.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:25px; color:#64748b;">No sales data found for selected period.</td></tr>';
     tfoot.style.display = 'none';
     return;
   }
