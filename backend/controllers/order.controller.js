@@ -11,16 +11,23 @@ const safeNum = (val) => {
 // Helper: Extract clean 10 digits
 const get10DigitPhone = (p) => String(p || '').replace(/\D/g, '').slice(-10);
 
-// Smart Regex Matcher: Matches last 10 digits even if DB has +91, spaces or dashes
-const buildPhoneRegex = (phoneStr) => {
-  const digits = get10DigitPhone(phoneStr);
-  if (digits.length < 10) return null;
-  const regexPattern = digits.split('').join('\\D*') + '$';
-  return new RegExp(regexPattern, 'i');
-};
-
 // Helper: ₹20 = 1 Coin
 const calculateEarnedCoins = (amount) => Math.floor(safeNum(amount) / 20);
+
+// Build All Possible Phone Variants (String, Number, +91, 0, etc.)
+const getPhoneVariants = (clean10Digits) => {
+  if (!clean10Digits || clean10Digits.length < 10) return [];
+  const numVal = Number(clean10Digits);
+  return [
+    clean10Digits,                // "7694009313"
+    numVal,                       // 7694009313 (Numeric Type)
+    `+91${clean10Digits}`,        // "+917694009313"
+    `91${clean10Digits}`,         // "917694009313"
+    `0${clean10Digits}`,          // "07694009313"
+    `+91 ${clean10Digits}`,       // "+91 7694009313"
+    `+91-${clean10Digits}`        // "+91-7694009313"
+  ];
+};
 
 // @desc    Create new order
 // @route   POST /api/orders
@@ -46,7 +53,6 @@ const createOrder = async (req, res) => {
     } = req.body;
 
     const branchId = req.user?.branch?._id || req.user?.branch;
-    const type = String(orderType || '').toLowerCase().trim();
     const payMethod = String(paymentMethod || 'cash').toLowerCase().trim();
 
     // 1. Generate Invoice Number
@@ -59,24 +65,24 @@ const createOrder = async (req, res) => {
     branch.currentInvoiceNumber += 1;
     await branch.save();
 
-    // 2. Customer & Coins Persistence (Fail-Safe)
+    // 2. Customer & Coins Persistence
     let customer = null;
     let rewardCoinsEarned = 0;
 
     const cleanPhone = get10DigitPhone(customerPhone);
     const hasValidPhone = cleanPhone.length === 10;
-    const phoneRegex = buildPhoneRegex(cleanPhone);
+    const phoneVariants = getPhoneVariants(cleanPhone);
+
     const inputName = customerName ? String(customerName).trim() : '';
     const inputAddr = String(deliveryAddress || customerAddress || '').trim();
     const isPendingPayment = payMethod === 'pending';
 
-    if (hasValidPhone && phoneRegex) {
-      // Find customer by flexible phone regex match
+    if (hasValidPhone) {
+      // Search by both exact variants AND end-with regex
       customer = await Customer.findOne({
         $or: [
-          { phone: phoneRegex },
-          { phone: cleanPhone },
-          { phone: { $regex: cleanPhone + '$' } }
+          { phone: { $in: phoneVariants } },
+          { phone: { $regex: cleanPhone + '$', $options: 'i' } }
         ]
       });
 
@@ -91,7 +97,7 @@ const createOrder = async (req, res) => {
           totalSpent: 0,
         });
       } else {
-        customer.phone = cleanPhone; // Normalize phone to 10 digits
+        customer.phone = cleanPhone; // Standardize to clean 10 digits
         if (inputName && inputName.toLowerCase() !== 'guest') {
           customer.name = inputName;
         }
@@ -176,7 +182,7 @@ const createOrder = async (req, res) => {
   }
 };
 
-// @desc    Lookup customer by phone (FLEXIBLE MATCH FOR ALL FORMATS)
+// @desc    Lookup customer by phone (PERMANENT ZERO-FAIL SEARCH)
 // @route   GET /api/orders/customer/:phone
 // @access  Private
 const lookupCustomer = async (req, res) => {
@@ -188,23 +194,24 @@ const lookupCustomer = async (req, res) => {
       return res.status(400).json({ message: 'Valid 10-digit phone number is required' });
     }
 
-    const phoneRegex = buildPhoneRegex(cleanPhone);
+    const phoneVariants = getPhoneVariants(cleanPhone);
 
-    // 1. Find Customer Profile (By flexible phone regex)
+    // 1. Find Customer Profile across String & Number fields
     let customer = await Customer.findOne({
       $or: [
-        { phone: phoneRegex },
-        { phone: cleanPhone },
-        { phone: { $regex: cleanPhone + '$' } }
+        { phone: { $in: phoneVariants } },
+        { phone: { $regex: cleanPhone + '$', $options: 'i' } }
       ]
     });
 
-    // 2. Build multi-field search conditions for Order History
+    // 2. Build Exhaustive Search Criteria for Orders
     const orderOrConditions = [
-      { 'customer.phone': phoneRegex },
-      { 'customerPhone': phoneRegex },
-      { 'customer.phone': { $regex: cleanPhone + '$' } },
-      { 'customerPhone': { $regex: cleanPhone + '$' } }
+      { 'customer.phone': { $in: phoneVariants } },
+      { 'customerPhone': { $in: phoneVariants } },
+      { 'phone': { $in: phoneVariants } },
+      { 'customer.phone': { $regex: cleanPhone + '$', $options: 'i' } },
+      { 'customerPhone': { $regex: cleanPhone + '$', $options: 'i' } },
+      { 'phone': { $regex: cleanPhone + '$', $options: 'i' } }
     ];
 
     if (customer && customer._id) {
@@ -212,10 +219,10 @@ const lookupCustomer = async (req, res) => {
       orderOrConditions.push({ 'customer._id': customer._id });
     }
 
-    // Fetch ALL orders matching phone or customer ID
-    const allOrders = await Order.find({ $or: orderOrConditions }).sort({ createdAt: -1 });
+    // Fetch ALL matching orders
+    const allOrders = await Order.find({ $or: orderOrConditions }).sort({ createdAt: -1 }).lean();
 
-    // Find real name from order history
+    // Find real customer name from any previous order
     let realNameFromOrders = '';
     allOrders.forEach((o) => {
       const n = o.customer?.name || o.customerName || '';
@@ -224,7 +231,7 @@ const lookupCustomer = async (req, res) => {
       }
     });
 
-    // Valid Non-Cancelled Paid Orders for Stats
+    // Filter valid non-cancelled orders for accurate statistics
     const validOrders = allOrders.filter((o) => {
       const st = String(o.status || '').toLowerCase();
       const pay = String(o.paymentMethod || '').toLowerCase();
@@ -236,7 +243,7 @@ const lookupCustomer = async (req, res) => {
     const computedOrdersCount = validOrders.length;
     const computedSpent = validOrders.reduce((sum, o) => sum + safeNum(o.grandTotal), 0);
 
-    // Calculate Exact Coins Balance from History
+    // Calculate Exact Coins Balance from Order History
     const computedCoinsBalance = validOrders.reduce((sum, o) => {
       const earned = (o.rewardCoinsEarned != null) ? safeNum(o.rewardCoinsEarned) : calculateEarnedCoins(o.grandTotal);
       const used = safeNum(o.rewardCoinsUsed);
@@ -258,8 +265,8 @@ const lookupCustomer = async (req, res) => {
       });
       await customer.save();
     } else {
-      // Auto-heal DB customer record
-      customer.phone = cleanPhone; // Normalize to 10 digits
+      // Heal & Normalize Customer Profile in DB
+      customer.phone = cleanPhone;
       customer.rewardCoins = exactCoins;
       customer.totalOrders = computedOrdersCount;
       customer.totalSpent = computedSpent;
@@ -360,6 +367,7 @@ const updateOrderStatus = async (req, res) => {
 
     // Finalize Coins on Dine-In Clear
     const phone = get10DigitPhone(order.customer?.phone);
+    const phoneVariants = getPhoneVariants(phone);
     const shouldFinalizeCoins =
       newStatus === 'completed' &&
       oldPay === 'pending' &&
@@ -372,8 +380,8 @@ const updateOrderStatus = async (req, res) => {
 
       const customer = await Customer.findOne({
         $or: [
-          { phone: buildPhoneRegex(phone) },
-          { phone: phone }
+          { phone: { $in: phoneVariants } },
+          { phone: { $regex: phone + '$', $options: 'i' } }
         ]
       });
 
