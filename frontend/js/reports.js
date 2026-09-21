@@ -1,5 +1,5 @@
 // ==============================
-// ORDER-WISE SALES REPORT (Excel style)
+// ORDER-WISE SALES REPORT + INVOICE PRINT
 // Uses /api/orders  (no reports API needed)
 // ==============================
 
@@ -54,7 +54,6 @@ function orderDayKey(order) {
 function formatDateLabel(order) {
   const d = new Date(order.createdAt || order.created_at || Date.now());
   if (isNaN(d.getTime())) return "-";
-  // like: 5-Apr-22
   const day = d.getDate();
   const mon = d.toLocaleString("en-IN", { month: "short" });
   const yy = String(d.getFullYear()).slice(-2);
@@ -157,7 +156,6 @@ async function fetchAllOrders() {
 
       const data = await res.json();
       orders = Array.isArray(data) ? data : data.orders || data.data || [];
-      console.log("✅ Orders loaded:", orders.length, "from", url);
       break;
     } catch (e) {
       console.error(e);
@@ -208,25 +206,17 @@ function renderReport(list) {
   const tbody = document.getElementById("reportBody");
   const tfoot = document.getElementById("reportFoot");
 
-  let kNet = 0;
-  let kOrders = 0;
-  let kTax = 0;
-  let kCancelAmt = 0;
-  let kCancelCount = 0;
-
-  let tItems = 0;
-  let tSub = 0;
-  let tDisc = 0;
-  let tTax = 0;
-  let tCharges = 0;
-  let tNet = 0;
+  let kNet = 0; let kOrders = 0; let kTax = 0;
+  let kCancelAmt = 0; let kCancelCount = 0;
+  let tItems = 0; let tSub = 0; let tDisc = 0;
+  let tTax = 0; let tCharges = 0; let tNet = 0;
 
   if (!list.length) {
     document.getElementById("kpiNet").innerText = "₹0.00";
     document.getElementById("kpiOrders").innerText = "0";
     document.getElementById("kpiTax").innerText = "₹0.00";
     document.getElementById("kpiCancel").innerText = "₹0.00";
-    tbody.innerHTML = `<tr><td colspan="11" class="empty">No sales data found for selected period.<br><small>Orders in memory: ${ALL_ORDERS.length}</small></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="11" class="empty">No sales data found for selected period.</td></tr>`;
     tfoot.style.display = "none";
     return;
   }
@@ -243,15 +233,11 @@ function renderReport(list) {
     const net = num(o.grandTotal ?? o.totalAmount ?? o.total);
     const itemsQty = itemCount(o);
 
-    const custName =
-      o.customer?.name && o.customer.name !== "N/A"
-        ? o.customer.name
-        : o.customerName || "Guest";
-
+    const custName = o.customer?.name && o.customer.name !== "N/A" ? o.customer.name : o.customerName || "Guest";
     const invoice = o.orderNumber || o.invoiceNo || "-";
     const status = o.status || "-";
 
-    // KPIs
+    // KPIs calculation
     if (cancelled) {
       kCancelAmt += net;
       kCancelCount += 1;
@@ -268,31 +254,32 @@ function renderReport(list) {
       tNet += net;
     }
 
-    // For cancelled, still show row but net can be shown as 0 or actual — sheet shows values; we show actual + status
     const rowSub = subTotal || Math.max(net - tax - charges + discount, 0);
-    const rowNet = cancelled ? 0 : net; // cancelled net sales = 0 in total; still show amount in red optional
 
+    // Row HTML (With Invoice Button)
     html += `
       <tr class="data-row">
         <td>${idx + 1}</td>
         <td>${formatDateLabel(o)}</td>
         <td><b>${invoice}</b></td>
-        <td>${custName}</td>
+        <td>
+          <div style="display:flex; align-items:center; gap:10px; justify-content:space-between; min-width:130px;">
+            <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:110px;" title="${custName}">${custName}</span>
+            <button type="button" class="btn-inv" onclick="printInvoice('${o._id}')" title="View/Print Invoice">🧾</button>
+          </div>
+        </td>
         <td>${itemsQty}</td>
         <td>${money(rowSub)}</td>
         <td class="c-orange">${money(discount)}</td>
         <td>${money(tax)}</td>
         <td>${money(charges)}</td>
-        <td class="${cancelled ? "c-red" : "c-blue"}">${money(cancelled ? net : net)}</td>
+        <td class="${cancelled ? "c-red" : "c-blue"}">${money(net)}</td>
         <td><span class="badge-status ${statusClass(status)}">${status}</span></td>
       </tr>
     `;
-
-    // If you want cancelled excluded from visible net column display as 0:
-    // change above net cell to: ${money(cancelled ? 0 : net)}
   });
 
-  // KPI cards
+  // KPI cards update
   document.getElementById("kpiNet").innerText = money(kNet);
   document.getElementById("kpiOrders").innerText = kOrders;
   document.getElementById("kpiTax").innerText = money(kTax);
@@ -300,7 +287,7 @@ function renderReport(list) {
 
   tbody.innerHTML = html;
 
-  // Footer subtotal (only non-cancelled contribution like sheet "Subtotal")
+  // Footer subtotal
   tfoot.innerHTML = `
     <tr>
       <td colspan="4" style="text-align:right;">Subtotal</td>
@@ -330,7 +317,138 @@ function loadReport() {
   buildReport();
 }
 
-// status dropdown change pe auto apply
+// ==========================================
+// PRINT INDIVIDUAL INVOICE FROM REPORT
+// ==========================================
+window.printInvoice = async function (orderId) {
+  try {
+    const btn = event?.currentTarget;
+    if (btn) {
+      btn.disabled = true;
+      btn.innerText = "⏳";
+    }
+
+    // Fetch full order detail
+    const res = await fetch(`${API_URL}/orders/${orderId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!res.ok) throw new Error("Failed to load invoice details");
+
+    const order = await res.json();
+    generateReportInvoice(order);
+    window.print(); // Triggers print dialog
+
+    if (btn) {
+      btn.disabled = false;
+      btn.innerText = "🧾";
+    }
+  } catch (err) {
+    console.error(err);
+    alert("Invoice load failed: " + err.message);
+    if (event?.currentTarget) {
+      event.currentTarget.disabled = false;
+      event.currentTarget.innerText = "🧾";
+    }
+  }
+};
+
+// Generates POS style thermal receipt HTML inside #printReceipt div
+function generateReportInvoice(order) {
+  let box = document.getElementById("printReceipt");
+  if (!box) {
+    box = document.createElement("div");
+    box.id = "printReceipt";
+    box.className = "print-only";
+    document.body.appendChild(box);
+  }
+
+  const items = order.items || [];
+  let itemsHtml = items
+    .map((item) => {
+      const name = item.product?.name || item.productName || "Item";
+      const unit =
+        (Number(item.basePrice) || 0) +
+        (Number(item.crustPrice) || 0) +
+        (Number(item.addonsTotal) || 0);
+      const lineTotal = unit * (Number(item.qty) || 1);
+
+      let extras = [];
+      if (item.size) extras.push(String(item.size).toUpperCase());
+      if (item.crust?.name) extras.push(item.crust.name);
+      if (Array.isArray(item.addons)) {
+        item.addons.forEach((a) => {
+          if (a?.name) extras.push(a.name);
+        });
+      }
+      if (item.comboSelections) extras.push(...item.comboSelections);
+
+      return `
+        <div style="display:flex; justify-content:space-between; margin:5px 0;">
+          <div>
+            <div style="font-weight:bold;">${item.qty} x ${name}</div>
+            ${extras.length ? `<div style="font-size:11px; color:#555;">${extras.join(", ")}</div>` : ""}
+          </div>
+          <div>₹${lineTotal}</div>
+        </div>
+      `;
+    })
+    .join("");
+
+  const date = new Date(order.createdAt || Date.now()).toLocaleString("en-IN", {
+    day: "2-digit", month: "short", year: "numeric",
+    hour: "2-digit", minute: "2-digit", hour12: true,
+  });
+
+  const custName = order.customer?.name && order.customer.name !== "N/A" ? order.customer.name : "Guest";
+  const custPhone = order.customer?.phone && order.customer.phone !== "N/A" ? order.customer.phone : "";
+  const subtotal = Number(order.subtotal) || 0;
+  const discount = Number(order.discount) || 0;
+  const coinsVal = Number(order.rewardCoinsValue) || 0;
+  const service = Number(order.serviceCharge) || 0;
+  const delivery = Number(order.deliveryCharge) || 0;
+  const gst = Number(order.gstAmount) || 0;
+  const total = Number(order.grandTotal) || 0;
+  const payMethod = (order.paymentMethod || "CASH").toUpperCase();
+
+  box.innerHTML = `
+    <div style="width:300px; margin:0 auto; font-family:monospace; font-size:12px; color:#000;">
+      <div style="text-align:center; margin-bottom:10px;">
+        <div style="font-size:16px; font-weight:bold; margin-bottom:4px;">PERFECT PIZZA</div>
+        <div>100% Pure Mozzarella's Pizza</div>
+        <div>Singhpur Chauraha, Kalyanpur</div>
+        <div>Ph: 9889229198</div>
+        <div>GSTIN: 09BCVPDD4203L2ZB</div>
+      </div>
+      <hr style="border-top:1px dashed #000;"/>
+      <div><b>Bill No:</b> ${order.orderNumber || "-"}</div>
+      <div><b>Date:</b> ${date}</div>
+      <div><b>Type:</b> ${(order.orderType || "").toUpperCase()}</div>
+      <div><b>Customer:</b> ${custName}${custPhone ? " | " + custPhone : ""}</div>
+      <div><b>Status:</b> ${order.status || "-"}</div>
+      <hr style="border-top:1px dashed #000;"/>
+      ${itemsHtml}
+      <hr style="border-top:1px dashed #000;"/>
+      <div style="display:flex; justify-content:space-between;"><span>Subtotal</span><span>₹${subtotal}</span></div>
+      ${discount > 0 ? `<div style="display:flex; justify-content:space-between;"><span>Discount</span><span>-₹${discount}</span></div>` : ""}
+      ${coinsVal > 0 ? `<div style="display:flex; justify-content:space-between;"><span>Coins Used</span><span>-₹${coinsVal}</span></div>` : ""}
+      ${service > 0 ? `<div style="display:flex; justify-content:space-between;"><span>Service Charge</span><span>+₹${service}</span></div>` : ""}
+      ${delivery > 0 ? `<div style="display:flex; justify-content:space-between;"><span>Delivery</span><span>+₹${delivery}</span></div>` : ""}
+      ${gst > 0 ? `<div style="display:flex; justify-content:space-between;"><span>GST (5%)</span><span>+₹${gst.toFixed(2)}</span></div>` : ""}
+      <hr style="border-top:1px dashed #000;"/>
+      <div style="display:flex; justify-content:space-between; font-size:14px; font-weight:bold;">
+        <span>TOTAL</span><span>₹${total}</span>
+      </div>
+      <div style="display:flex; justify-content:space-between;">
+        <span>Payment</span><span>${payMethod}</span>
+      </div>
+      <hr style="border-top:1px dashed #000;"/>
+      <div style="text-align:center; margin-top:10px;">Thank You! Visit Again</div>
+    </div>
+  `;
+}
+
+// Bootstrap
 document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("statusFilter")?.addEventListener("change", buildReport);
   setRange("today");
