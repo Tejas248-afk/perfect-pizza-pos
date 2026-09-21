@@ -1,6 +1,7 @@
 const Order = require('../models/Order');
 const Customer = require('../models/Customer');
 const Branch = require('../models/Branch');
+const { sendDirectWhatsAppMessage } = require('../helpers/whatsapp'); // WhatsApp API
 
 // Safe Number Helper (Prevents NaN crashes)
 const safeNum = (val) => {
@@ -8,10 +9,10 @@ const safeNum = (val) => {
   return isNaN(n) ? 0 : n;
 };
 
-// Helper: Extract clean 10 digits
+// Helper: Extract exact 10 digits
 const get10DigitPhone = (p) => String(p || '').replace(/\D/g, '').slice(-10);
 
-// Helper: ₹20 = 1 Coin
+// Helper: ₹20 = 1 Coin (Change to /50 if you want)
 const calculateEarnedCoins = (amount) => Math.floor(safeNum(amount) / 20);
 
 // Build All Possible Phone Variants (String, Number, +91, 0, etc.)
@@ -19,22 +20,20 @@ const getPhoneVariants = (clean10Digits) => {
   if (!clean10Digits || clean10Digits.length < 10) return [];
   const numVal = Number(clean10Digits);
   return [
-    clean10Digits,                // "7694009313"
-    numVal,                       // 7694009313 (Numeric Type)
-    `+91${clean10Digits}`,        // "+917694009313"
-    `91${clean10Digits}`,         // "917694009313"
-    `0${clean10Digits}`,          // "07694009313"
-    `+91 ${clean10Digits}`,       // "+91 7694009313"
-    `+91-${clean10Digits}`        // "+91-7694009313"
+    clean10Digits,                // "9876543210" (String)
+    numVal,                       // 9876543210 (Number Type for MongoDB bug)
+    `+91${clean10Digits}`,        
+    `91${clean10Digits}`,         
+    `0${clean10Digits}`,          
+    `+91 ${clean10Digits}`
   ];
 };
 
-// @desc    Create new order
-// @route   POST /api/orders
-// @access  Private
+// 1. CREATE ORDER
 const createOrder = async (req, res) => {
   try {
     const {
+      branch,
       orderType,
       customerPhone,
       customerName,
@@ -43,160 +42,133 @@ const createOrder = async (req, res) => {
       items,
       subtotal,
       discount,
-      rewardCoinsUsed = 0,
-      rewardCoinsValue = 0,
-      serviceCharge = 0,
-      deliveryCharge = 0,
-      gstAmount = 0,
-      grandTotal = 0,
-      paymentMethod = 'cash',
+      rewardCoinsUsed,
+      rewardCoinsValue,
+      serviceCharge,
+      deliveryCharge,
+      gstAmount,
+      grandTotal,
+      paymentMethod,
     } = req.body;
 
-    const branchId = req.user?.branch?._id || req.user?.branch;
+    // Generate Order Number
+    const count = await Order.countDocuments().catch(() => 0);
+    const orderNumber = `ORD-${101 + count}`;
+
+    const safeGrandTotal = safeNum(grandTotal);
     const payMethod = String(paymentMethod || 'cash').toLowerCase().trim();
+    const isPendingPayment = payMethod === 'pending';
+    
+    let cleanPhone = get10DigitPhone(customerPhone);
+    if (cleanPhone.length !== 10) cleanPhone = 'N/A';
 
-    // 1. Generate Invoice Number
-    const branch = await Branch.findById(branchId);
-    if (!branch) {
-      return res.status(404).json({ message: 'Branch not found' });
-    }
-
-    const invoiceNo = `${branch.invoicePrefix}${branch.currentInvoiceNumber}`;
-    branch.currentInvoiceNumber += 1;
-    await branch.save();
-
-    // 2. Customer & Coins Persistence
-    let customer = null;
+    let customerObj = { name: customerName || 'Guest', phone: cleanPhone };
     let rewardCoinsEarned = 0;
 
-    const cleanPhone = get10DigitPhone(customerPhone);
-    const hasValidPhone = cleanPhone.length === 10;
-    const phoneVariants = getPhoneVariants(cleanPhone);
+    if (cleanPhone !== 'N/A') {
+      const finalAddress = (customerAddress || deliveryAddress || '').trim();
+      const phoneVariants = getPhoneVariants(cleanPhone);
 
-    const inputName = customerName ? String(customerName).trim() : '';
-    const inputAddr = String(deliveryAddress || customerAddress || '').trim();
-    const isPendingPayment = payMethod === 'pending';
-
-    if (hasValidPhone) {
-      // Search by both exact variants AND end-with regex
-      customer = await Customer.findOne({
+      // Smart Search: Both String and Number types
+      let existingCustomer = await Customer.findOne({
         $or: [
           { phone: { $in: phoneVariants } },
           { phone: { $regex: cleanPhone + '$', $options: 'i' } }
         ]
       });
 
-      if (!customer) {
-        customer = new Customer({
-          branch: branchId,
-          phone: cleanPhone,
-          name: (inputName && inputName.toLowerCase() !== 'guest') ? inputName : 'Guest',
-          address: inputAddr,
-          rewardCoins: 0,
-          totalOrders: 0,
-          totalSpent: 0,
-        });
-      } else {
-        customer.phone = cleanPhone; // Standardize to clean 10 digits
-        if (inputName && inputName.toLowerCase() !== 'guest') {
-          customer.name = inputName;
-        }
-        if (inputAddr) {
-          customer.address = inputAddr;
-        }
-      }
-
       // Deduct Used Coins Safely
       let coinsToRedeem = safeNum(rewardCoinsUsed);
-      if (coinsToRedeem > 0) {
-        let currentBalance = safeNum(customer.rewardCoins);
+      if (existingCustomer && coinsToRedeem > 0) {
+        let currentBalance = safeNum(existingCustomer.rewardCoins);
         if (currentBalance < coinsToRedeem) {
           coinsToRedeem = Math.floor(currentBalance / 20) * 20;
         }
-        customer.rewardCoins = Math.max(0, currentBalance - coinsToRedeem);
+        existingCustomer.rewardCoins = Math.max(0, currentBalance - coinsToRedeem);
       }
 
       // Earn Coins (Only if not a pending table start)
       if (!isPendingPayment) {
-        rewardCoinsEarned = calculateEarnedCoins(grandTotal);
-        customer.rewardCoins = safeNum(customer.rewardCoins) + rewardCoinsEarned;
-        customer.totalOrders = safeNum(customer.totalOrders) + 1;
-        customer.totalSpent = safeNum(customer.totalSpent) + safeNum(grandTotal);
+        rewardCoinsEarned = calculateEarnedCoins(safeGrandTotal);
       }
 
-      await customer.save();
+      if (existingCustomer) {
+        existingCustomer.phone = cleanPhone; // Normalize
+        if (customerName && customerName.toLowerCase() !== 'guest') existingCustomer.name = customerName;
+        if (finalAddress) existingCustomer.address = finalAddress;
+        
+        if (!isPendingPayment) {
+          existingCustomer.totalOrders = safeNum(existingCustomer.totalOrders) + 1;
+          existingCustomer.totalSpent = safeNum(existingCustomer.totalSpent) + safeGrandTotal;
+          existingCustomer.rewardCoins = safeNum(existingCustomer.rewardCoins) + rewardCoinsEarned;
+        }
+
+        await existingCustomer.save();
+        customerObj = { id: existingCustomer._id, name: existingCustomer.name, phone: existingCustomer.phone };
+      } else {
+        const newCust = await Customer.create({
+          phone: cleanPhone,
+          name: (customerName && customerName.toLowerCase() !== 'guest') ? customerName : 'Guest',
+          address: finalAddress,
+          totalOrders: isPendingPayment ? 0 : 1,
+          totalSpent: isPendingPayment ? 0 : safeGrandTotal,
+          rewardCoins: rewardCoinsEarned,
+        });
+        customerObj = { id: newCust._id, name: newCust.name, phone: newCust.phone };
+      }
     }
 
-    // Address Fail-Safe
-    let finalAddress = inputAddr;
-    if (!finalAddress && customer && customer.address) {
-      finalAddress = customer.address;
-    }
+    const safeOrderType = ['delivery', 'takeaway', 'dine-in'].includes(String(orderType).toLowerCase()) 
+      ? String(orderType).toLowerCase() : 'dine-in';
 
-    // 3. Create Order
-    const order = new Order({
-      branch: branchId,
-      orderNumber: invoiceNo,
-      orderType,
-      customer: customer
-        ? {
-            name: customer.name,
-            phone: customer.phone,
-            id: customer._id,
-          }
-        : {
-            name: (inputName && inputName.toLowerCase() !== 'guest') ? inputName : 'Guest',
-            phone: hasValidPhone ? cleanPhone : customerPhone || 'N/A',
-          },
-      deliveryAddress: finalAddress,
-      items,
+    const newOrder = new Order({
+      branch: branch || null,
+      orderNumber,
+      orderType: safeOrderType,
+      customer: customerObj,
+      customerPhone: cleanPhone,
+      deliveryAddress: deliveryAddress || customerAddress || '',
+      items: items || [],
       subtotal: safeNum(subtotal),
       discount: safeNum(discount),
       rewardCoinsUsed: safeNum(rewardCoinsUsed),
       rewardCoinsValue: safeNum(rewardCoinsValue),
+      rewardCoinsEarned,
       serviceCharge: safeNum(serviceCharge),
       deliveryCharge: safeNum(deliveryCharge),
       gstAmount: safeNum(gstAmount),
-      grandTotal: safeNum(grandTotal),
-      paymentMethod: paymentMethod || 'cash',
-      rewardCoinsEarned,
-      createdBy: req.user._id,
+      grandTotal: safeGrandTotal,
+      paymentMethod: payMethod,
+      paymentStatus: isPendingPayment ? 'pending' : 'paid',
+      status: 'new',
     });
 
-    const createdOrder = await order.save();
+    await newOrder.save();
 
-    // 4. Realtime Broadcast
-    const io = req.app.get('io');
-    if (io) {
-      io.emit('newOrder', createdOrder);
+    // 🔥 AUTOMATIC WHATSAPP VIA POWERSTEXT API
+    if (cleanPhone !== 'N/A' && !isPendingPayment) {
+      sendDirectWhatsAppMessage(cleanPhone, newOrder);
     }
 
-    res.status(201).json({
-      message: 'Order created successfully',
-      order: createdOrder,
-      customerData: customer,
-    });
-  } catch (error) {
-    console.error('Create Order Error:', error);
-    res.status(500).json({ message: error.message });
+    const io = req.app.get('io');
+    if (io) io.emit('newOrder', newOrder);
+
+    return res.status(201).json({ success: true, order: newOrder, customerData: customerObj });
+  } catch (err) {
+    console.error('❌ ORDER CREATION ERROR:', err);
+    return res.status(500).json({ success: false, message: err.message });
   }
 };
 
-// @desc    Lookup customer by phone (PERMANENT ZERO-FAIL SEARCH)
-// @route   GET /api/orders/customer/:phone
-// @access  Private
+// 2. LOOKUP CUSTOMER (AUTO HEAL & SYNC)
 const lookupCustomer = async (req, res) => {
   try {
-    const rawPhone = req.params.phone ? req.params.phone.trim() : '';
-    const cleanPhone = get10DigitPhone(rawPhone);
-
-    if (!cleanPhone || cleanPhone.length < 10) {
-      return res.status(400).json({ message: 'Valid 10-digit phone number is required' });
-    }
+    const cleanPhone = get10DigitPhone(req.params.phone);
+    if (cleanPhone.length < 10) return res.status(400).json({ message: 'Valid 10-digit phone required' });
 
     const phoneVariants = getPhoneVariants(cleanPhone);
 
-    // 1. Find Customer Profile across String & Number fields
+    // Find Profile
     let customer = await Customer.findOne({
       $or: [
         { phone: { $in: phoneVariants } },
@@ -204,205 +176,148 @@ const lookupCustomer = async (req, res) => {
       ]
     });
 
-    // 2. Build Exhaustive Search Criteria for Orders
+    // Find ALL Order History using robust multi-field match
     const orderOrConditions = [
       { 'customer.phone': { $in: phoneVariants } },
       { 'customerPhone': { $in: phoneVariants } },
-      { 'phone': { $in: phoneVariants } },
       { 'customer.phone': { $regex: cleanPhone + '$', $options: 'i' } },
-      { 'customerPhone': { $regex: cleanPhone + '$', $options: 'i' } },
-      { 'phone': { $regex: cleanPhone + '$', $options: 'i' } }
+      { 'customerPhone': { $regex: cleanPhone + '$', $options: 'i' } }
     ];
-
     if (customer && customer._id) {
       orderOrConditions.push({ 'customer.id': customer._id });
       orderOrConditions.push({ 'customer._id': customer._id });
     }
 
-    // Fetch ALL matching orders
     const allOrders = await Order.find({ $or: orderOrConditions }).sort({ createdAt: -1 }).lean();
 
-    // Find real customer name from any previous order
-    let realNameFromOrders = '';
-    allOrders.forEach((o) => {
+    let realName = '';
+    allOrders.forEach(o => {
       const n = o.customer?.name || o.customerName || '';
-      if (n && n.toLowerCase() !== 'guest' && !realNameFromOrders) {
-        realNameFromOrders = n;
-      }
+      if (n && n.toLowerCase() !== 'guest' && !realName) realName = n;
     });
 
-    // Filter valid non-cancelled orders for accurate statistics
-    const validOrders = allOrders.filter((o) => {
+    const validOrders = allOrders.filter(o => {
       const st = String(o.status || '').toLowerCase();
       const pay = String(o.paymentMethod || '').toLowerCase();
-      if (['cancelled', 'canceled', 'cancel', 'rejected'].includes(st)) return false;
-      if (pay === 'pending') return false;
-      return true;
+      return !['cancelled', 'canceled', 'cancel', 'rejected'].includes(st) && pay !== 'pending';
     });
 
-    const computedOrdersCount = validOrders.length;
+    const computedOrders = validOrders.length;
     const computedSpent = validOrders.reduce((sum, o) => sum + safeNum(o.grandTotal), 0);
-
-    // Calculate Exact Coins Balance from Order History
-    const computedCoinsBalance = validOrders.reduce((sum, o) => {
-      const earned = (o.rewardCoinsEarned != null) ? safeNum(o.rewardCoinsEarned) : calculateEarnedCoins(o.grandTotal);
-      const used = safeNum(o.rewardCoinsUsed);
-      return sum + earned - used;
-    }, 0);
-
-    const exactCoins = Math.max(0, computedCoinsBalance);
+    const computedCoins = Math.max(0, validOrders.reduce((sum, o) => {
+      const earned = o.rewardCoinsEarned != null ? safeNum(o.rewardCoinsEarned) : calculateEarnedCoins(o.grandTotal);
+      return sum + earned - safeNum(o.rewardCoinsUsed);
+    }, 0));
 
     if (!customer) {
-      if (allOrders.length === 0) {
-        return res.json({ found: false });
-      }
-      customer = new Customer({
-        phone: cleanPhone,
-        name: realNameFromOrders || 'Guest',
-        rewardCoins: exactCoins,
-        totalOrders: computedOrdersCount,
-        totalSpent: computedSpent,
+      if (allOrders.length === 0) return res.json({ found: false });
+      customer = await Customer.create({
+        phone: cleanPhone, name: realName || 'Guest', rewardCoins: computedCoins, totalOrders: computedOrders, totalSpent: computedSpent
       });
-      await customer.save();
     } else {
-      // Heal & Normalize Customer Profile in DB
       customer.phone = cleanPhone;
-      customer.rewardCoins = exactCoins;
-      customer.totalOrders = computedOrdersCount;
+      customer.rewardCoins = computedCoins;
+      customer.totalOrders = computedOrders;
       customer.totalSpent = computedSpent;
-
-      if ((!customer.name || customer.name.toLowerCase() === 'guest') && realNameFromOrders) {
-        customer.name = realNameFromOrders;
-      }
-
+      if ((!customer.name || customer.name.toLowerCase() === 'guest') && realName) customer.name = realName;
       await customer.save();
     }
 
-    const previousOrders = allOrders.slice(0, 10).map((o) => ({
-      _id: o._id,
-      orderNumber: o.orderNumber,
-      grandTotal: safeNum(o.grandTotal),
-      orderType: o.orderType,
-      createdAt: o.createdAt,
-      status: o.status,
-      items: o.items,
-      deliveryAddress: o.deliveryAddress,
-      customer: o.customer,
-    }));
-
-    res.json({
+    return res.json({
       found: true,
-      customer: {
-        _id: customer._id,
-        phone: customer.phone,
-        name: customer.name || 'Guest',
-        address: customer.address || '',
-        rewardCoins: safeNum(customer.rewardCoins),
-        totalOrders: safeNum(customer.totalOrders),
-        totalSpent: safeNum(customer.totalSpent)
-      },
-      previousOrders,
+      customer: { _id: customer._id, phone: customer.phone, name: customer.name || 'Guest', address: customer.address || '', rewardCoins: safeNum(customer.rewardCoins), totalOrders: safeNum(customer.totalOrders), totalSpent: safeNum(customer.totalSpent) },
+      previousOrders: allOrders.slice(0, 5),
     });
-  } catch (error) {
-    console.error('Lookup Error:', error);
-    res.status(500).json({ message: error.message });
+  } catch (err) {
+    return res.status(500).json({ found: false, message: err.message });
   }
 };
 
+// 3. GET ORDERS
 const getOrders = async (req, res) => {
   try {
-    const branchId = req.user?.branch?._id || req.user?.branch;
-    const { status, today } = req.query;
-
-    let filter = {};
-    if (branchId) filter.branch = branchId;
-    if (status) filter.status = status;
-
+    const { today, status } = req.query;
+    let query = {};
+    if (status) query.status = status;
     if (today === 'true') {
-      const start = new Date();
-      start.setHours(0, 0, 0, 0);
-      filter.createdAt = { $gte: start };
+      const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
+      query.createdAt = { $gte: startOfDay };
     }
-
-    const orders = await Order.find(filter)
-      .sort({ createdAt: -1 })
-      .populate('createdBy', 'name');
-
+    const orders = await Order.find(query).sort({ createdAt: -1 });
     res.json(orders);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
 };
 
+// 4. GET SINGLE ORDER
 const getOrderById = async (req, res) => {
   try {
+    if (req.params.id.length !== 24) return res.status(400).json({ message: 'Invalid ID' });
     const order = await Order.findById(req.params.id);
     if (!order) return res.status(404).json({ message: 'Order not found' });
     res.json(order);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
 };
 
+// 5. UPDATE STATUS & FINALIZE DINE-IN COINS
 const updateOrderStatus = async (req, res) => {
   try {
     const { status, paymentMethod } = req.body;
     const order = await Order.findById(req.params.id);
-
-    if (!order) {
-      return res.status(404).json({ message: 'Order not found' });
-    }
+    if (!order) return res.status(404).json({ message: 'Order not found' });
 
     const oldPay = String(order.paymentMethod || '').toLowerCase();
     const newStatus = String(status || '').toLowerCase();
 
     order.status = status;
-    if (paymentMethod) {
-      order.paymentMethod = paymentMethod;
-    }
+    if (paymentMethod) order.paymentMethod = paymentMethod;
+    if (newStatus === 'completed') order.completedAt = new Date();
 
-    if (newStatus === 'completed') {
-      order.completedAt = new Date();
-    }
-
-    // Finalize Coins on Dine-In Clear
-    const phone = get10DigitPhone(order.customer?.phone);
-    const phoneVariants = getPhoneVariants(phone);
-    const shouldFinalizeCoins =
-      newStatus === 'completed' &&
-      oldPay === 'pending' &&
-      phone.length === 10 &&
-      safeNum(order.rewardCoinsEarned) === 0;
-
-    if (shouldFinalizeCoins) {
+    // Finalize Coins if Dine-In (Pending -> Completed)
+    const phone = get10DigitPhone(order.customer?.phone || order.customerPhone);
+    if (newStatus === 'completed' && oldPay === 'pending' && phone.length === 10 && safeNum(order.rewardCoinsEarned) === 0) {
       const earned = calculateEarnedCoins(order.grandTotal);
       order.rewardCoinsEarned = earned;
-
-      const customer = await Customer.findOne({
-        $or: [
-          { phone: { $in: phoneVariants } },
-          { phone: { $regex: phone + '$', $options: 'i' } }
-        ]
-      });
-
-      if (customer) {
-        customer.rewardCoins = safeNum(customer.rewardCoins) + earned;
-        customer.totalOrders = safeNum(customer.totalOrders) + 1;
-        customer.totalSpent = safeNum(customer.totalSpent) + safeNum(order.grandTotal);
-        await customer.save();
+      const cust = await Customer.findOne({ phone: { $regex: phone + '$' } });
+      if (cust) {
+        cust.rewardCoins = safeNum(cust.rewardCoins) + earned;
+        cust.totalOrders = safeNum(cust.totalOrders) + 1;
+        cust.totalSpent = safeNum(cust.totalSpent) + safeNum(order.grandTotal);
+        await cust.save();
       }
     }
 
     await order.save();
+    const io = req.app.get('io');
+    if (io) io.emit('orderUpdated', order);
+
+    res.json({ success: true, order });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// 6. ADD KOT ITEMS (For Dine-in)
+const addKotItems = async (req, res) => {
+  try {
+    const { items, subtotal, grandTotal } = req.body;
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ message: 'Order not found' });
+
+    order.items.push(...items);
+    order.subtotal = safeNum(order.subtotal) + safeNum(subtotal);
+    order.grandTotal = safeNum(order.grandTotal) + safeNum(grandTotal);
+    await order.save();
 
     const io = req.app.get('io');
-    if (io) {
-      io.emit('orderUpdated', order);
-    }
+    if (io) io.emit('orderUpdated', order);
 
-    res.json({ message: 'Status updated', order });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.json({ success: true, order });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
 };
 
@@ -412,4 +327,5 @@ module.exports = {
   getOrders,
   getOrderById,
   updateOrderStatus,
+  addKotItems
 };
