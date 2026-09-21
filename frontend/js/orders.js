@@ -83,9 +83,9 @@ function connectSocket() {
   socket = io(SOCKET_URL, {
     transports: ['websocket', 'polling'],
     reconnection: true,
-    reconnectionDelay: 1000,      // हर 1 सेकंड में रीकनेक्ट करने की कोशिश करेगा
-    reconnectionDelayMax: 5000,   // अधिकतम 5 सेकंड का गैप लेगा
-    reconnectionAttempts: Infinity // हमेशा कोशिश करता रहेगा
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 5000,
+    reconnectionAttempts: Infinity,
   });
 
   socket.on('connect', () => {
@@ -121,11 +121,10 @@ function connectSocket() {
   });
 }
 
-// ---------- Load from API (With Silent Mode Support) ----------
+// ---------- Load from API ----------
 async function loadOrders(silent = false) {
   const list = document.getElementById('ordersList');
-  
-  // Loader सिर्फ पहली बार दिखेगा, बैकग्राउंड रिफ्रेश (silent) में नहीं ताकि स्क्रीन फ्लिकर न करे
+
   if (list && !silent && allOrders.length === 0) {
     list.innerHTML = '<div class="loading">Loading...</div>';
   }
@@ -138,11 +137,9 @@ async function loadOrders(silent = false) {
 
     const newOrders = await res.json();
 
-    // चेक करें कि क्या कोई नया ऑर्डर आया है जो पहले लिस्ट में नहीं था
     if (silent && allOrders.length > 0) {
-      const existingIds = new Set(allOrders.map(o => o._id));
-      const hasNew = newOrders.some(o => !existingIds.has(o._id));
-      
+      const existingIds = new Set(allOrders.map((o) => o._id));
+      const hasNew = newOrders.some((o) => !existingIds.has(o._id));
       if (hasNew) {
         playTripleBeep();
         flashPageTitle();
@@ -152,8 +149,7 @@ async function loadOrders(silent = false) {
     allOrders = newOrders;
     renderOrders();
   } catch (err) {
-    console.error("Fetch Error:", err.message);
-    // अगर बिल्कुल भी ऑर्डर्स नहीं हैं, तभी स्क्रीन पर एरर दिखाएं
+    console.error('Fetch Error:', err.message);
     if (list && allOrders.length === 0) {
       list.innerHTML = `<div class="empty-state">Error: ${err.message}</div>`;
     }
@@ -169,6 +165,17 @@ function getFilteredOrders() {
     return allOrders;
   }
   return allOrders.filter((o) => o.status === currentFilter);
+}
+
+function getDeliveryAddress(order) {
+  // Fail-safe: deliveryAddress OR customer.address style fields
+  return (
+    order.deliveryAddress ||
+    order.customerAddress ||
+    order.customer?.address ||
+    order.address ||
+    ''
+  ).trim();
 }
 
 function renderOrders() {
@@ -208,14 +215,24 @@ function renderOrders() {
         ready: '✅ Complete',
       }[o.status];
 
-      const cust =
-        o.customer?.phone && o.customer.phone !== 'N/A'
-          ? ` · 📞 ${o.customer.phone}`
+      const isDelivery = String(o.orderType || '').toLowerCase() === 'delivery';
+      const address = getDeliveryAddress(o);
+
+      const custPhone =
+        o.customer?.phone && o.customer.phone !== 'N/A' ? ` · 📞 ${o.customer.phone}` : '';
+      const custName = o.customer?.name ? ` · ${o.customer.name}` : '';
+
+      // 🔥 Delivery address highlight box
+      const addrHtml =
+        isDelivery && address
+          ? `<div class="order-address-box" style="margin-top:8px;padding:8px 10px;background:#FEF3C7;border-left:4px solid #F59E0B;border-radius:6px;font-size:13px;font-weight:600;color:#92400E;line-height:1.35;">
+               📍 <b>DELIVER TO:</b><br>${address}
+             </div>`
+          : address
+          ? `<div class="order-meta">📍 ${address}</div>`
+          : isDelivery
+          ? `<div class="order-meta" style="color:#dc2626;font-weight:600;">📍 Address missing</div>`
           : '';
-      const name = o.customer?.name ? ` · ${o.customer.name}` : '';
-      const addr = o.deliveryAddress
-        ? `<div class="order-meta">📍 ${o.deliveryAddress}</div>`
-        : '';
 
       return `
         <div class="order-card" data-id="${o._id}">
@@ -224,9 +241,9 @@ function renderOrders() {
             <span class="badge ${o.status}">${o.status}</span>
           </div>
           <div class="order-meta">
-            ${(o.orderType || '').toUpperCase()} · ${time}${cust}${name}
+            ${(o.orderType || '').toUpperCase()} · ${time}${custPhone}${custName}
           </div>
-          ${addr}
+          ${addrHtml}
           <div class="order-items">${itemsPreview}</div>
           <div class="order-total">₹${o.grandTotal} · ${(o.paymentMethod || '').toUpperCase()}</div>
           <div class="order-actions">
@@ -274,31 +291,54 @@ async function updateStatus(id, status) {
   }
 }
 
-// ---------- Reprint ----------
+// ---------- Reprint (Bill + Delivery Address) ----------
 async function reprintOrder(id) {
   try {
-    const order = allOrders.find((o) => o._id === id);
+    let order = allOrders.find((o) => o._id === id);
+
+    // Agar local me incomplete ho to server se full order lao
+    if (!order || !order.items) {
+      const res = await fetch(`${API_URL}/orders/${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Failed to fetch order');
+      order = await res.json();
+    }
+
     if (!order) return alert('Order not found');
 
     const container = document.getElementById('printReceipt');
-    if (!container) return;
+    if (!container) return alert('Print container missing (#printReceipt)');
 
     let itemsHtml = (order.items || [])
       .map((item) => {
         const name = item.product?.name || item.productName || 'Item';
-        const unit = (item.basePrice || 0) + (item.crustPrice || 0) + (item.addonsTotal || 0);
+        const unit =
+          (Number(item.basePrice) || 0) +
+          (Number(item.crustPrice) || 0) +
+          (Number(item.addonsTotal) || 0);
+
+        let extras = [];
+        if (item.size) extras.push(String(item.size).toUpperCase());
+        if (item.crust?.name) extras.push(item.crust.name);
+        if (Array.isArray(item.addons)) {
+          item.addons.forEach((a) => a?.name && extras.push(a.name));
+        }
+        if (item.comboSelections) extras.push(...item.comboSelections);
+
         return `
         <div class="r-row">
           <div class="r-left">
             <div class="r-item">${item.qty} x ${name}</div>
+            ${extras.length ? `<div class="r-extra">${extras.join(', ')}</div>` : ''}
           </div>
-          <div class="r-right">₹${unit * item.qty}</div>
+          <div class="r-right">₹${unit * (Number(item.qty) || 1)}</div>
         </div>
       `;
       })
       .join('');
 
-    const date = new Date(order.createdAt).toLocaleString('en-IN', {
+    const date = new Date(order.createdAt || Date.now()).toLocaleString('en-IN', {
       day: '2-digit',
       month: 'short',
       year: 'numeric',
@@ -306,6 +346,39 @@ async function reprintOrder(id) {
       minute: '2-digit',
       hour12: true,
     });
+
+    const orderType = String(order.orderType || '').toUpperCase();
+    const isDelivery = orderType === 'DELIVERY';
+    const address = getDeliveryAddress(order);
+
+    const custName =
+      order.customer?.name && order.customer.name !== 'Guest' ? order.customer.name : '';
+    const custPhone =
+      order.customer?.phone && order.customer.phone !== 'N/A' ? order.customer.phone : '';
+
+    // 🔥 Delivery block for KOT/Bill
+    const deliveryBlock =
+      isDelivery
+        ? `
+        <div class="r-dash"></div>
+        <div class="r-line"><b>CUSTOMER:</b> ${custName || 'Guest'}${custPhone ? ' | ' + custPhone : ''}</div>
+        <div class="r-line" style="margin-top:4px;"><b>📍 DELIVERY ADDRESS:</b></div>
+        <div class="r-line" style="font-weight:700; white-space:pre-wrap;">${address || 'Address not provided'}</div>
+      `
+        : `
+        ${
+          custName || custPhone
+            ? `<div class="r-line"><b>Customer:</b> ${custName}${custName && custPhone ? ' | ' : ''}${custPhone}</div>`
+            : ''
+        }
+      `;
+
+    const subtotal = Number(order.subtotal) || 0;
+    const discount = Number(order.discount) || 0;
+    const service = Number(order.serviceCharge) || 0;
+    const delivery = Number(order.deliveryCharge) || 0;
+    const gst = Number(order.gstAmount) || 0;
+    const total = Number(order.grandTotal) || 0;
 
     container.innerHTML = `
       <div class="receipt">
@@ -318,15 +391,21 @@ async function reprintOrder(id) {
           <div class="r-sub">GSTIN: 09BCVPDD4203L2ZB</div>
         </div>
         <div class="r-dash"></div>
-        <div class="r-line"><b>Bill No:</b> ${order.orderNumber}</div>
+        <div class="r-line"><b>Bill No:</b> ${order.orderNumber || '-'}</div>
         <div class="r-line"><b>Date:</b> ${date}</div>
-        <div class="r-line"><b>Type:</b> ${(order.orderType || '').toUpperCase()}</div>
+        <div class="r-line"><b>Type:</b> ${orderType}</div>
+        ${deliveryBlock}
         <div class="r-dash"></div>
         ${itemsHtml}
         <div class="r-dash"></div>
+        ${subtotal ? `<div class="r-row"><div class="r-left">Subtotal</div><div class="r-right">₹${subtotal}</div></div>` : ''}
+        ${discount > 0 ? `<div class="r-row"><div class="r-left">Discount</div><div class="r-right">-₹${discount}</div></div>` : ''}
+        ${service > 0 ? `<div class="r-row"><div class="r-left">Service</div><div class="r-right">+₹${service}</div></div>` : ''}
+        ${delivery > 0 ? `<div class="r-row"><div class="r-left">Delivery</div><div class="r-right">+₹${delivery}</div></div>` : ''}
+        ${gst > 0 ? `<div class="r-row"><div class="r-left">GST</div><div class="r-right">+₹${gst.toFixed(2)}</div></div>` : ''}
         <div class="r-row r-total">
           <div class="r-left"><b>TOTAL</b></div>
-          <div class="r-right"><b>₹${order.grandTotal}</b></div>
+          <div class="r-right"><b>₹${total}</b></div>
         </div>
         <div class="r-row">
           <div class="r-left">Payment</div>
@@ -434,11 +513,7 @@ function toggleNightMode() {
 // ---------- Init ----------
 document.addEventListener('DOMContentLoaded', applyNightMode);
 connectSocket();
-
-// पहली बार लोडर के साथ डेटा खींचेगा
 loadOrders(false);
-
-// हर 10 सेकंड में बैकग्राउंड में साइलेंटली आर्डर्स रिफ्रेश करेगा 
 setInterval(() => {
   loadOrders(true);
 }, 10000);

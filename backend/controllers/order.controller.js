@@ -37,16 +37,16 @@ const createOrder = async (req, res) => {
     branch.currentInvoiceNumber += 1;
     await branch.save();
 
-    // 2. Handle Customer & Rewards Persistence (FIXED)
+    // 2. Handle Customer & Rewards Persistence
     let customer = null;
     let rewardCoinsEarned = 0;
 
     if (customerPhone) {
       const cleanPhone = String(customerPhone).trim().replace(/[^0-9]/g, '').slice(-10);
       const inputName = customerName ? customerName.trim() : '';
-      const inputAddr = (customerAddress || deliveryAddress || '').trim();
+      const inputAddr = (deliveryAddress || customerAddress || '').trim();
 
-      // Find customer by phone number (Global lookup across branch to prevent duplicate zero-coin profiles)
+      // Find customer by phone number
       customer = await Customer.findOne({ phone: cleanPhone });
 
       if (!customer) {
@@ -61,7 +61,7 @@ const createOrder = async (req, res) => {
           totalSpent: 0
         });
       } else {
-        // Existing Customer -> Update Name if POS sent a valid non-guest name!
+        // Existing Customer -> Update Name & Address if provided
         if (inputName && inputName.toLowerCase() !== 'guest') {
           customer.name = inputName;
         }
@@ -94,6 +94,12 @@ const createOrder = async (req, res) => {
       await customer.save();
     }
 
+    // 🔥 FAIL-SAFE ADDRESS RESOLUTION (Priority: deliveryAddress -> customerAddress -> customer.address)
+    let finalAddress = (deliveryAddress || customerAddress || '').trim();
+    if (!finalAddress && customer && customer.address) {
+      finalAddress = customer.address;
+    }
+
     // 3. Create Order
     const order = new Order({
       branch: branchId,
@@ -102,7 +108,7 @@ const createOrder = async (req, res) => {
       customer: customer
         ? { name: customer.name, phone: customer.phone, id: customer._id }
         : { name: (customerName && customerName !== 'Guest') ? customerName : 'Guest', phone: customerPhone || 'N/A' },
-      deliveryAddress: deliveryAddress || customerAddress || '',
+      deliveryAddress: finalAddress, // Guaranteed Address
       items,
       subtotal: Number(subtotal) || 0,
       discount: Number(discount) || 0,
@@ -148,7 +154,6 @@ const lookupCustomer = async (req, res) => {
       return res.status(400).json({ message: 'Valid 10-digit phone number is required' });
     }
 
-    // Lookup customer by phone globally so coins and history are always preserved
     const customer = await Customer.findOne({ phone: cleanPhone });
     if (!customer) {
       return res.json({ found: false });
