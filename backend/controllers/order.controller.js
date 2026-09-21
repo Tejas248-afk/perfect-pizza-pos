@@ -11,20 +11,21 @@ const createOrder = async (req, res) => {
       orderType,
       customerPhone,
       customerName,
+      customerAddress,
       deliveryAddress,
       items,
       subtotal,
       discount,
       rewardCoinsUsed = 0,
       rewardCoinsValue = 0,
-      serviceCharge,    // <-- Added Service Charge
-      deliveryCharge,
-      gstAmount,
-      grandTotal,
-      paymentMethod,
+      serviceCharge = 0,
+      deliveryCharge = 0,
+      gstAmount = 0,
+      grandTotal = 0,
+      paymentMethod = 'cash',
     } = req.body;
 
-    const branchId = req.user.branch._id || req.user.branch;
+    const branchId = req.user?.branch?._id || req.user?.branch;
 
     // 1. Generate Invoice Number
     const branch = await Branch.findById(branchId);
@@ -36,42 +37,60 @@ const createOrder = async (req, res) => {
     branch.currentInvoiceNumber += 1;
     await branch.save();
 
-    // 2. Handle Customer & Rewards
+    // 2. Handle Customer & Rewards Persistence (FIXED)
     let customer = null;
     let rewardCoinsEarned = 0;
 
     if (customerPhone) {
-      const cleanPhone = customerPhone.trim();
+      const cleanPhone = String(customerPhone).trim().replace(/[^0-9]/g, '').slice(-10);
+      const inputName = customerName ? customerName.trim() : '';
+      const inputAddr = (customerAddress || deliveryAddress || '').trim();
 
-      customer = await Customer.findOne({ phone: cleanPhone, branch: branchId });
+      // Find customer by phone number (Global lookup across branch to prevent duplicate zero-coin profiles)
+      customer = await Customer.findOne({ phone: cleanPhone });
 
       if (!customer) {
+        // Naya Customer Profile
         customer = new Customer({
           branch: branchId,
           phone: cleanPhone,
-          name: customerName || 'Guest',
+          name: (inputName && inputName.toLowerCase() !== 'guest') ? inputName : 'Guest',
+          address: inputAddr,
+          rewardCoins: 0,
+          totalOrders: 0,
+          totalSpent: 0
         });
-      } else if (customerName && (customer.name === 'Guest' || !customer.name)) {
-        customer.name = customerName;
+      } else {
+        // Existing Customer -> Update Name if POS sent a valid non-guest name!
+        if (inputName && inputName.toLowerCase() !== 'guest') {
+          customer.name = inputName;
+        }
+        if (inputAddr) {
+          customer.address = inputAddr;
+        }
       }
 
       // Redeem coins if requested
-      if (rewardCoinsUsed > 0) {
-        if (customer.rewardCoins < rewardCoinsUsed) {
+      const coinsToRedeem = Number(rewardCoinsUsed) || 0;
+      if (coinsToRedeem > 0) {
+        const currentCoins = Number(customer.rewardCoins) || 0;
+        if (currentCoins < coinsToRedeem) {
           return res.status(400).json({ message: 'Not enough reward coins' });
         }
-        if (rewardCoinsUsed % 20 !== 0) {
+        if (coinsToRedeem % 20 !== 0) {
           return res.status(400).json({ message: 'Coins must be redeemed in multiples of 20' });
         }
-        customer.rewardCoins -= rewardCoinsUsed;
+        customer.rewardCoins = currentCoins - coinsToRedeem;
       }
 
       // Earn Rewards: Order > 100 ? 20 coins : 10 coins
-      rewardCoinsEarned = grandTotal > 100 ? 20 : 10;
+      rewardCoinsEarned = Number(grandTotal) > 100 ? 20 : 10;
 
-      customer.rewardCoins += rewardCoinsEarned;
-      customer.totalOrders += 1;
-      customer.totalSpent += grandTotal;
+      customer.rewardCoins = (Number(customer.rewardCoins) || 0) + rewardCoinsEarned;
+      customer.totalOrders = (Number(customer.totalOrders) || 0) + 1;
+      customer.totalSpent = (Number(customer.totalSpent) || 0) + Number(grandTotal);
+
+      // Persist Customer Changes to MongoDB
       await customer.save();
     }
 
@@ -82,17 +101,17 @@ const createOrder = async (req, res) => {
       orderType,
       customer: customer
         ? { name: customer.name, phone: customer.phone, id: customer._id }
-        : { name: customerName || 'Guest', phone: customerPhone || 'N/A' },
-      deliveryAddress: deliveryAddress || '',
+        : { name: (customerName && customerName !== 'Guest') ? customerName : 'Guest', phone: customerPhone || 'N/A' },
+      deliveryAddress: deliveryAddress || customerAddress || '',
       items,
-      subtotal,
-      discount: discount || 0,
-      rewardCoinsUsed: rewardCoinsUsed || 0,
-      rewardCoinsValue: rewardCoinsValue || 0,
-      serviceCharge: serviceCharge || 0, // <-- Saved to DB
-      deliveryCharge: deliveryCharge || 0,
-      gstAmount: gstAmount || 0,
-      grandTotal,
+      subtotal: Number(subtotal) || 0,
+      discount: Number(discount) || 0,
+      rewardCoinsUsed: Number(rewardCoinsUsed) || 0,
+      rewardCoinsValue: Number(rewardCoinsValue) || 0,
+      serviceCharge: Number(serviceCharge) || 0,
+      deliveryCharge: Number(deliveryCharge) || 0,
+      gstAmount: Number(gstAmount) || 0,
+      grandTotal: Number(grandTotal) || 0,
       paymentMethod: paymentMethod || 'cash',
       rewardCoinsEarned,
       createdBy: req.user._id,
@@ -100,7 +119,7 @@ const createOrder = async (req, res) => {
 
     const createdOrder = await order.save();
 
-    // 4. Emit real-time event to Kitchen Display
+    // 4. Emit real-time event to Kitchen Display & Orders Page
     const io = req.app.get('io');
     if (io) {
       io.emit('newOrder', createdOrder);
@@ -122,23 +141,23 @@ const createOrder = async (req, res) => {
 // @access  Private
 const lookupCustomer = async (req, res) => {
   try {
-    const branchId = req.user.branch._id || req.user.branch;
-    const phone = req.params.phone ? req.params.phone.trim() : '';
+    const rawPhone = req.params.phone ? req.params.phone.trim() : '';
+    const cleanPhone = rawPhone.replace(/[^0-9]/g, '').slice(-10);
 
-    if (!phone) {
-      return res.status(400).json({ message: 'Phone number is required' });
+    if (!cleanPhone) {
+      return res.status(400).json({ message: 'Valid 10-digit phone number is required' });
     }
 
-    const customer = await Customer.findOne({ phone, branch: branchId });
+    // Lookup customer by phone globally so coins and history are always preserved
+    const customer = await Customer.findOne({ phone: cleanPhone });
     if (!customer) {
       return res.json({ found: false });
     }
 
-    // Last 5 orders
+    // Fetch Last 5 orders for this customer
     const previousOrders = await Order.find({
-      branch: branchId,
       $or: [
-        { 'customer.phone': phone },
+        { 'customer.phone': cleanPhone },
         { 'customer.id': customer._id },
       ],
     })
@@ -162,10 +181,11 @@ const lookupCustomer = async (req, res) => {
 // @access  Private
 const getOrders = async (req, res) => {
   try {
-    const branchId = req.user.branch._id || req.user.branch;
+    const branchId = req.user?.branch?._id || req.user?.branch;
     const { status, today } = req.query;
 
-    let filter = { branch: branchId };
+    let filter = {};
+    if (branchId) filter.branch = branchId;
 
     if (status) {
       filter.status = status;
@@ -218,7 +238,7 @@ const updateOrderStatus = async (req, res) => {
     }
     await order.save();
 
-    // Emit status update to Kitchen
+    // Emit status update to Kitchen & Orders Page
     const io = req.app.get('io');
     if (io) {
       io.emit('orderUpdated', order);
