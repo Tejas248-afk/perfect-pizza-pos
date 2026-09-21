@@ -27,18 +27,13 @@ if (user.role === 'cashier') {
 }
 
 // ------------------------------------
-// Helper: Format Date to YYYY-MM-DD
+// IST Date String Helper (YYYY-MM-DD)
 // ------------------------------------
-function formatDate(d) {
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
+function getISTDateString(d = new Date()) {
+  const ist = new Date(d.getTime() + (5.5 * 60 * 60 * 1000));
+  return ist.toISOString().split('T')[0];
 }
 
-// ------------------------------------
-// Preset Button Logic (Yesterday, Today, etc)
-// ------------------------------------
 function setPreset(type, event) {
   document.querySelectorAll('.btn-preset').forEach(b => b.classList.remove('active'));
   
@@ -49,24 +44,24 @@ function setPreset(type, event) {
     if (todayBtn) todayBtn.classList.add('active');
   }
 
-  const today = new Date();
+  const now = new Date();
   let start = new Date();
   let end = new Date();
 
   if (type === 'today') {
     // start and end are today
   } else if (type === 'yesterday') {
-    start.setDate(today.getDate() - 1);
-    end.setDate(today.getDate() - 1);
+    start.setDate(now.getDate() - 1);
+    end.setDate(now.getDate() - 1);
   } else if (type === 'thisWeek') {
-    const day = today.getDay() || 7;
-    start.setDate(today.getDate() - day + 1);
+    const day = now.getDay() || 7;
+    start.setDate(now.getDate() - day + 1);
   } else if (type === 'thisMonth') {
-    start = new Date(today.getFullYear(), today.getMonth(), 1);
+    start = new Date(now.getFullYear(), now.getMonth(), 1);
   }
 
-  document.getElementById('startDate').value = formatDate(start);
-  document.getElementById('endDate').value = formatDate(end);
+  document.getElementById('startDate').value = getISTDateString(start);
+  document.getElementById('endDate').value = getISTDateString(end);
 
   fetchReports();
 }
@@ -86,7 +81,7 @@ async function fetchReports() {
   
   if (!startDate || !endDate) return alert("Please select both dates");
 
-  tbody.innerHTML = '<tr><td colspan="9" class="loader"><i class="fa-solid fa-spinner fa-spin"></i> Fetching data...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="9" class="loader"><i class="fa-solid fa-spinner fa-spin"></i> Loading sales data...</td></tr>';
   tfoot.style.display = 'none';
 
   try {

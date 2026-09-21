@@ -7,47 +7,27 @@ const getSummaryReport = async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
 
-    // Default to today if dates not provided
-    const now = new Date();
-    const defaultDateStr = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-    
-    const sDateStr = startDate || defaultDateStr;
-    const eDateStr = endDate || defaultDateStr;
-
-    // Broad UTC range to ensure no timezone edge cases are missed in DB query
-    const broadStart = new Date(`${sDateStr}T00:00:00.000Z`);
-    broadStart.setDate(broadStart.getDate() - 1); // 1 day buffer before
-
-    const broadEnd = new Date(`${eDateStr}T23:59:59.999Z`);
-    broadEnd.setDate(broadEnd.getDate() + 1); // 1 day buffer after
-
-    let filter = {
-      createdAt: { $gte: broadStart, $lte: broadEnd }
+    // Helper: IST Date string (YYYY-MM-DD)
+    const getISTDateStr = (dObj) => {
+      const istTime = new Date(new Date(dObj).getTime() + (5.5 * 60 * 60 * 1000));
+      return istTime.toISOString().split('T')[0];
     };
 
-    // Safe Branch Filter (Order fetch block na ho agar branch null ho)
-    if (req.user && req.user.branch) {
-      const branchId = req.user.branch._id || req.user.branch;
-      if (branchId) {
-        filter.$or = [
-          { branch: branchId },
-          { branch: { $exists: false } },
-          { branch: null }
-        ];
-      }
-    }
+    // Default to today in IST
+    const todayIST = getISTDateStr(new Date());
+    const sDateStr = startDate || todayIST;
+    const eDateStr = endDate || todayIST;
 
-    const rawOrders = await Order.find(filter).lean();
-    console.log(`📊 Reports Log: Found ${rawOrders.length} raw orders in DB.`);
+    // Parse IST start and end into UTC Date objects for Mongo Query
+    const startTime = new Date(`${sDateStr}T00:00:00.000+05:30`);
+    const endTime = new Date(`${eDateStr}T23:59:59.999+05:30`);
 
-    // Strict Indian Standard Time (IST) Date Filtering (YYYY-MM-DD)
-    const allOrders = rawOrders.filter(order => {
-      if (!order.createdAt) return false;
-      const orderISTDate = new Date(order.createdAt).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-      return orderISTDate >= sDateStr && orderISTDate <= eDateStr;
-    });
+    // Fetch orders in date range (Branch restriction removed so no orders get blocked)
+    const rawOrders = await Order.find({
+      createdAt: { $gte: startTime, $lte: endTime }
+    }).sort({ createdAt: -1 }).lean();
 
-    console.log(`📊 Reports Log: ${allOrders.length} orders matched exact IST range (${sDateStr} to ${eDateStr}).`);
+    console.log(`📊 Report Query: ${sDateStr} to ${eDateStr} | Found ${rawOrders.length} orders.`);
 
     let totalSales = 0;
     let totalOrders = 0;
@@ -61,22 +41,20 @@ const getSummaryReport = async (req, res) => {
 
     const dailyMap = {};
 
-    const getISTDateInfo = (dateObj) => {
-      const d = new Date(dateObj);
-      const dateKey = d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-      const label = d.toLocaleDateString('en-IN', {
+    rawOrders.forEach((order) => {
+      const dateKey = getISTDateStr(order.createdAt);
+      
+      // Formatted Label like "20 Sep, 2026"
+      const istObj = new Date(new Date(order.createdAt).getTime() + (5.5 * 60 * 60 * 1000));
+      const dateLabel = istObj.toLocaleDateString('en-IN', {
         day: '2-digit',
         month: 'short',
-        year: 'numeric',
-        timeZone: 'Asia/Kolkata'
+        year: 'numeric'
       });
-      return { dateKey, label };
-    };
 
-    const ensureDay = (dateKey, label) => {
       if (!dailyMap[dateKey]) {
         dailyMap[dateKey] = {
-          date: label,
+          date: dateLabel,
           dateKey: dateKey,
           orders: 0,
           subTotal: 0,
@@ -89,13 +67,8 @@ const getSummaryReport = async (req, res) => {
           netSales: 0,
         };
       }
-      return dailyMap[dateKey];
-    };
 
-    allOrders.forEach((order) => {
-      const { dateKey, label } = getISTDateInfo(order.createdAt);
-      const day = ensureDay(dateKey, label);
-
+      const day = dailyMap[dateKey];
       const statusLower = String(order.status || '').toLowerCase().trim();
       const isCancelled = ['cancelled', 'canceled', 'cancel', 'rejected'].includes(statusLower);
 
@@ -129,20 +102,7 @@ const getSummaryReport = async (req, res) => {
       }
     });
 
-    const dailyBreakdown = Object.values(dailyMap)
-      .sort((a, b) => (a.dateKey < b.dateKey ? 1 : -1))
-      .map((d) => ({
-        date: d.date,
-        orders: d.orders,
-        subTotal: Number(d.subTotal.toFixed(2)),
-        tax: Number(d.tax.toFixed(2)),
-        discount: Number(d.discount.toFixed(2)),
-        charges: Number(d.charges.toFixed(2)),
-        grossSales: Number(d.grossSales.toFixed(2)),
-        cancelledAmount: Number(d.cancelledAmount.toFixed(2)),
-        cancelledOrders: d.cancelledOrders,
-        netSales: Number(d.netSales.toFixed(2)),
-      }));
+    const dailyBreakdown = Object.values(dailyMap).sort((a, b) => b.dateKey.localeCompare(a.dateKey));
 
     res.json({
       totalSales: Number(totalSales.toFixed(2)),
