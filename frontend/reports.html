@@ -9,7 +9,6 @@
   <style>
     body { font-family: 'Inter', sans-serif; background-color: #f4f7f6; color: #334155; margin: 0; padding: 0; }
     
-    /* Header Navbar */
     .pos-header { background: #1e293b; color: white; padding: 15px 25px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
     .pos-header h2 { margin: 0; font-size: 20px; font-weight: 600; }
     .nav-links { display: flex; gap: 10px; }
@@ -20,32 +19,28 @@
 
     .container { padding: 25px; max-width: 1400px; margin: 0 auto; }
 
-    /* Top Filters Section */
     .filter-section { display: flex; flex-direction: column; gap: 15px; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 20px; border-top: 4px solid #14b8a6; }
     
     .preset-btns { display: flex; gap: 10px; flex-wrap: wrap; }
     .btn-preset { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; padding: 8px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 13px; transition: 0.2s; }
     .btn-preset:hover, .btn-preset.active { background: #14b8a6; color: white; border-color: #14b8a6; }
+    .btn-preset.all-time { background: #3b82f6; color: white; border-color: #3b82f6; }
 
     .custom-range { display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end; }
     .input-group { display: flex; flex-direction: column; gap: 6px; }
     .input-group label { font-size: 13px; font-weight: 600; color: #475569; }
-    .input-group label span { color: #ef4444; }
     .filter-input { padding: 9px 12px; border: 1px solid #cbd5e1; border-radius: 6px; outline: none; font-size: 14px; color: #334155; cursor: pointer; }
     
     .btn-apply { background: #22c55e; color: white; border: none; padding: 10px 22px; border-radius: 6px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 14px; }
     .btn-apply:hover { background: #16a34a; }
     .btn-reset { background: #f8fafc; color: #334155; border: 1px solid #cbd5e1; padding: 10px 22px; border-radius: 6px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 14px; }
-    .btn-reset:hover { background: #f1f5f9; }
-    
-    /* Table Controls */
+
     .table-controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
     .search-box { position: relative; }
     .search-box input { padding: 9px 15px 9px 35px; border: 1px solid #cbd5e1; border-radius: 6px; width: 250px; font-size: 14px; outline: none; }
     .search-box i { position: absolute; left: 12px; top: 11px; color: #94a3b8; }
     .export-icons i { padding: 10px; border: 1px solid #e2e8f0; border-radius: 6px; color: #64748b; cursor: pointer; background: #f8fafc; }
 
-    /* The Table */
     .table-container { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow-x: auto; }
     table { width: 100%; border-collapse: collapse; min-width: 1000px; }
     th { background: #f8fafc; padding: 16px 15px; text-align: left; font-size: 13px; font-weight: 700; color: #475569; border-bottom: 2px solid #e2e8f0; border-right: 1px solid #e2e8f0; white-space: nowrap; }
@@ -70,7 +65,6 @@
 </head>
 <body>
 
-  <!-- Top Navigation -->
   <header class="pos-header">
     <h2>📊 Reports & Analytics</h2>
     <div class="nav-links">
@@ -82,41 +76,39 @@
   </header>
 
   <div class="container">
-    <!-- Top Filters -->
     <div class="filter-section">
       <div class="preset-btns">
         <button class="btn-preset active" onclick="setPreset('today', event)">Today</button>
         <button class="btn-preset" onclick="setPreset('yesterday', event)">Yesterday</button>
         <button class="btn-preset" onclick="setPreset('thisWeek', event)">This Week</button>
         <button class="btn-preset" onclick="setPreset('thisMonth', event)">This Month</button>
+        <button class="btn-preset all-time" onclick="setPreset('all', event)">🌐 All Time Data</button>
       </div>
 
       <div class="custom-range">
         <div class="input-group">
-          <label>From <span>*</span></label>
+          <label>From</label>
           <input type="date" class="filter-input" id="startDate">
         </div>
         <div class="input-group">
-          <label>To <span>*</span></label>
+          <label>To</label>
           <input type="date" class="filter-input" id="endDate">
         </div>
-        <button class="btn-apply" onclick="fetchReports()"><i class="fa-solid fa-check"></i> Apply</button>
-        <button class="btn-reset" onclick="setPreset('today', null)"><i class="fa-solid fa-rotate-right"></i> Reset</button>
+        <button class="btn-apply" onclick="fetchReports()"><i class="fa-solid fa-check"></i> Apply Filter</button>
+        <button class="btn-reset" onclick="setPreset('all', event)"><i class="fa-solid fa-rotate-right"></i> Show All</button>
       </div>
     </div>
 
-    <!-- Table Controls -->
     <div class="table-controls">
       <div class="search-box">
         <i class="fa-solid fa-magnifying-glass"></i>
-        <input type="text" id="searchInput" placeholder="Search by date..." onkeyup="searchTable()">
+        <input type="text" id="searchInput" placeholder="Search date..." onkeyup="searchTable()">
       </div>
       <div class="export-icons">
-        <i class="fa-solid fa-print" title="Print Report" onclick="window.print()"></i>
+        <i class="fa-solid fa-print" title="Print" onclick="window.print()"></i>
       </div>
     </div>
 
-    <!-- The 9-Column ERP Table -->
     <div class="table-container">
       <table id="reportTable">
         <thead>

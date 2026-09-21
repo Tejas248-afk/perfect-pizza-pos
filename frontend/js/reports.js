@@ -1,4 +1,3 @@
-// 🔥 APNA RENDER BACKEND URL YAHAN LIKHO
 const RENDER_BACKEND_URL = "https://perfect-pizza-pos.onrender.com"; 
 
 window.SOCKET_URL = (window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1'))
@@ -26,31 +25,31 @@ if (user.role === 'cashier') {
   window.location.href = 'pos.html';
 }
 
-// ------------------------------------
-// Helper: Get IST Date String (YYYY-MM-DD)
-// ------------------------------------
 function getISTDateString(d = new Date()) {
   const ist = new Date(d.getTime() + (5.5 * 60 * 60 * 1000));
   return ist.toISOString().split('T')[0];
 }
 
-// Preset Filter Handler
 function setPreset(type, event) {
   document.querySelectorAll('.btn-preset').forEach(b => b.classList.remove('active'));
   
   if (event && event.currentTarget) {
     event.currentTarget.classList.add('active');
-  } else if (type === 'today') {
-    const todayBtn = document.querySelector('.btn-preset');
-    if (todayBtn) todayBtn.classList.add('active');
   }
 
   const now = new Date();
   let start = new Date();
   let end = new Date();
 
+  if (type === 'all') {
+    document.getElementById('startDate').value = '';
+    document.getElementById('endDate').value = '';
+    fetchReports();
+    return;
+  }
+
   if (type === 'today') {
-    // start and end are today
+    // today
   } else if (type === 'yesterday') {
     start.setDate(now.getDate() - 1);
     end.setDate(now.getDate() - 1);
@@ -68,21 +67,16 @@ function setPreset(type, event) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  setPreset('today', null);
+  setPreset('all', null); // Initial load shows ALL orders so client sees data immediately!
 });
 
-// ------------------------------------
-// Fetch Data from API
-// ------------------------------------
 async function fetchReports() {
   const startDate = document.getElementById('startDate').value;
   const endDate = document.getElementById('endDate').value;
   const tbody = document.getElementById('reportBody');
   const tfoot = document.getElementById('reportFoot');
   
-  if (!startDate || !endDate) return alert("Please select both dates");
-
-  tbody.innerHTML = '<tr><td colspan="9" class="loader"><i class="fa-solid fa-spinner fa-spin"></i> Fetching sales data...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="9" class="loader"><i class="fa-solid fa-spinner fa-spin"></i> Fetching data...</td></tr>';
   tfoot.style.display = 'none';
 
   try {
@@ -101,23 +95,18 @@ async function fetchReports() {
   }
 }
 
-// ------------------------------------
-// Render Table & Foot Totals
-// ------------------------------------
 function renderTable(dailyData) {
   const tbody = document.getElementById('reportBody');
   const tfoot = document.getElementById('reportFoot');
 
   if (dailyData.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:25px; color:#64748b;">No sales data found for selected period.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:25px; color:#64748b;">No orders found in database.</td></tr>';
     tfoot.style.display = 'none';
     return;
   }
 
   let html = '';
-  let totals = {
-    orders: 0, subTotal: 0, discount: 0, tax: 0, charges: 0, gross: 0, returns: 0, net: 0
-  };
+  let totals = { orders: 0, subTotal: 0, discount: 0, tax: 0, charges: 0, gross: 0, returns: 0, net: 0 };
 
   dailyData.forEach(day => {
     totals.orders += day.orders;

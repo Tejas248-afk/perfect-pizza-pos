@@ -1,46 +1,57 @@
 const Order = require('../models/Order');
 
-// @desc    Get Sales Summary & Analytics (ERP Style)
+// @desc    Get Sales Summary & Analytics (Zero-Fail Logic)
 // @route   GET /api/reports/summary
 // @access  Private (Admin / Super-Admin)
 const getSummaryReport = async (req, res) => {
   try {
+    // 1. Database se saare orders uthao (Bina kisi strict Mongo date restriction ke)
+    const allDbOrders = await Order.find({}).sort({ createdAt: -1 }).lean();
+
+    console.log(`📊 DB Log: Total orders in Database = ${allDbOrders ? allDbOrders.length : 0}`);
+
+    if (!allDbOrders || allDbOrders.length === 0) {
+      return res.json({
+        totalSales: 0,
+        totalOrders: 0,
+        totalGst: 0,
+        totalCancelledOrders: 0,
+        totalCancelledAmount: 0,
+        dailyBreakdown: []
+      });
+    }
+
     const { startDate, endDate } = req.query;
 
-    // Helper: IST Date String YYYY-MM-DD
-    const getISTDateStr = (d = new Date()) => {
-      const istTime = new Date(d.getTime() + (5.5 * 60 * 60 * 1000));
-      return istTime.toISOString().split('T')[0];
+    // Helper: Convert any Date object to Indian YYYY-MM-DD
+    const toISTYYYYMMDD = (d) => {
+      if (!d) return '';
+      const dateObj = new Date(d);
+      if (isNaN(dateObj.getTime())) return '';
+      const istDate = new Date(dateObj.getTime() + (5.5 * 60 * 60 * 1000));
+      return istDate.toISOString().split('T')[0];
     };
 
-    const todayIST = getISTDateStr(new Date());
-    const sDateStr = startDate || todayIST;
-    const eDateStr = endDate || todayIST;
+    // 2. Filter orders in pure JavaScript
+    let ordersToProcess = allDbOrders;
 
-    // Indian Midnight to Midnight in UTC Date Objects
-    const startUTC = new Date(`${sDateStr}T00:00:00.000+05:30`);
-    const endUTC = new Date(`${eDateStr}T23:59:59.999+05:30`);
+    if (startDate && endDate && startDate.trim() !== '' && endDate.trim() !== '') {
+      ordersToProcess = allDbOrders.filter(order => {
+        const orderDateStr = toISTYYYYMMDD(order.createdAt);
+        return orderDateStr >= startDate && orderDateStr <= endDate;
+      });
+    }
 
-    // Mongo Query - No strict branch block so ALL test orders appear
-    const query = {
-      createdAt: { $gte: startUTC, $lte: endUTC }
-    };
-
-    const rawOrders = await Order.find(query).sort({ createdAt: -1 }).lean();
-    console.log(`📊 Reports Query [${sDateStr} to ${eDateStr}]: Found ${rawOrders.length} orders.`);
-
+    // 3. Process Daily Breakdown
     const dailyMap = {};
 
-    rawOrders.forEach(order => {
-      // Calculate IST date key for grouping
-      const dateKey = getISTDateStr(new Date(order.createdAt));
+    ordersToProcess.forEach(order => {
+      const dateKey = toISTYYYYMMDD(order.createdAt) || 'Unknown Date';
       
       const istObj = new Date(new Date(order.createdAt).getTime() + (5.5 * 60 * 60 * 1000));
-      const dateLabel = istObj.toLocaleDateString('en-IN', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric'
-      });
+      const dateLabel = !isNaN(istObj.getTime()) 
+        ? istObj.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+        : dateKey;
 
       if (!dailyMap[dateKey]) {
         dailyMap[dateKey] = {
@@ -82,10 +93,9 @@ const getSummaryReport = async (req, res) => {
       }
     });
 
-    // Array sorted by date (newest first)
     const dailyBreakdown = Object.values(dailyMap).sort((a, b) => b.dateKey.localeCompare(a.dateKey));
 
-    // Totals KPI
+    // 4. Calculate Totals
     let totalSales = 0;
     let totalOrders = 0;
     let totalGst = 0;
@@ -110,7 +120,7 @@ const getSummaryReport = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Reports Summary Error:', error);
+    console.error('Report Error:', error);
     res.status(500).json({ message: error.message });
   }
 };
