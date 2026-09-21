@@ -5,30 +5,49 @@ const Order = require('../models/Order');
 // @access  Private (Admin / Super-Admin)
 const getSummaryReport = async (req, res) => {
   try {
-    let filter = {};
-
-    if (req.user && req.user.branch) {
-      const branchId = req.user.branch._id || req.user.branch;
-      if (branchId) filter.branch = branchId;
-    }
-
     const { startDate, endDate } = req.query;
 
-    let start, end;
-    if (startDate && endDate) {
-      // Force Indian Standard Time (+05:30)
-      start = new Date(`${startDate}T00:00:00.000+05:30`);
-      end = new Date(`${endDate}T23:59:59.999+05:30`);
-    } else {
-      const now = new Date();
-      const istStr = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-      start = new Date(`${istStr}T00:00:00.000+05:30`);
-      end = new Date(`${istStr}T23:59:59.999+05:30`);
+    // Default to today if dates not provided
+    const now = new Date();
+    const defaultDateStr = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    
+    const sDateStr = startDate || defaultDateStr;
+    const eDateStr = endDate || defaultDateStr;
+
+    // Broad UTC range to ensure no timezone edge cases are missed in DB query
+    const broadStart = new Date(`${sDateStr}T00:00:00.000Z`);
+    broadStart.setDate(broadStart.getDate() - 1); // 1 day buffer before
+
+    const broadEnd = new Date(`${eDateStr}T23:59:59.999Z`);
+    broadEnd.setDate(broadEnd.getDate() + 1); // 1 day buffer after
+
+    let filter = {
+      createdAt: { $gte: broadStart, $lte: broadEnd }
+    };
+
+    // Safe Branch Filter (Order fetch block na ho agar branch null ho)
+    if (req.user && req.user.branch) {
+      const branchId = req.user.branch._id || req.user.branch;
+      if (branchId) {
+        filter.$or = [
+          { branch: branchId },
+          { branch: { $exists: false } },
+          { branch: null }
+        ];
+      }
     }
 
-    filter.createdAt = { $gte: start, $lte: end };
+    const rawOrders = await Order.find(filter).lean();
+    console.log(`📊 Reports Log: Found ${rawOrders.length} raw orders in DB.`);
 
-    const allOrders = await Order.find(filter).lean();
+    // Strict Indian Standard Time (IST) Date Filtering (YYYY-MM-DD)
+    const allOrders = rawOrders.filter(order => {
+      if (!order.createdAt) return false;
+      const orderISTDate = new Date(order.createdAt).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+      return orderISTDate >= sDateStr && orderISTDate <= eDateStr;
+    });
+
+    console.log(`📊 Reports Log: ${allOrders.length} orders matched exact IST range (${sDateStr} to ${eDateStr}).`);
 
     let totalSales = 0;
     let totalOrders = 0;
@@ -42,7 +61,6 @@ const getSummaryReport = async (req, res) => {
 
     const dailyMap = {};
 
-    // Grouping helper with IST conversion
     const getISTDateInfo = (dateObj) => {
       const d = new Date(dateObj);
       const dateKey = d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
