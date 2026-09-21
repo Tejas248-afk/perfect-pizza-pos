@@ -1,4 +1,4 @@
-// --- URLs & CONFIGURATION (DEPLOYMENT READY) ---
+// --- URLs & CONFIGURATION ---
 const RENDER_BACKEND_URL = "https://perfect-pizza-pos.onrender.com"; 
 
 window.SOCKET_URL = (window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1'))
@@ -88,20 +88,6 @@ function initPOS() {
     const dineInRadio = document.querySelector('input[value="dine-in"]');
     if (dineInRadio) dineInRadio.checked = true;
     document.querySelectorAll('input[name="orderType"]').forEach((r) => (r.disabled = true));
-
-const customerPhone = (document.getElementById('customerPhone')?.value || '')
-  .replace(/[^0-9]/g, '')
-  .slice(-10);
-
-const orderData = {
-  orderType, // dine-in | delivery | takeaway
-  customerPhone,
-  customerName: document.getElementById('customerName')?.value?.trim() || '',
-  // ...
-  rewardCoinsUsed: window._rewardCoinsUsed || 0,
-  rewardCoinsValue: window._rewardCoinsValue || 0,
-  grandTotal: parseInt(document.getElementById('cartTotal')?.innerText.replace('₹', '') || 0),
-};
 
     if (posMode === 'dine-in') {
       document.getElementById('payBtn').innerText = '👨‍🍳 START TABLE & SEND KOT';
@@ -207,7 +193,7 @@ function renderProducts(categoryId, searchQuery = '') {
   });
 }
 
-// --- 2. Customer Lookup & Auto Fill (FIXED) ---
+// --- 2. Customer Lookup (100% Crash-Proof) ---
 let lookupTimer = null;
 document.getElementById('customerPhone')?.addEventListener('input', (e) => {
   const phone = e.target.value.trim();
@@ -222,7 +208,7 @@ document.getElementById('customerPhone')?.addEventListener('input', (e) => {
 
 function manualCustomerSearch() {
   const phone = document.getElementById('customerPhone')?.value.trim();
-  if (phone && phone.length === 10) searchCustomer(phone);
+  if (phone && phone.length >= 10) searchCustomer(phone);
   else alert('Please enter a valid 10-digit phone number');
 }
 
@@ -245,7 +231,6 @@ async function searchCustomer(phone) {
     const c = data.customer || {};
     const ordersList = data.previousOrders || [];
 
-    // Find real name if profile says "Guest"
     let displayName = c.name || '';
     if ((!displayName || displayName.toLowerCase() === 'guest') && ordersList.length > 0) {
       const orderWithName = ordersList.find(o => o.customer?.name && o.customer.name.toLowerCase() !== 'guest');
@@ -267,10 +252,9 @@ async function searchCustomer(phone) {
       }
     }
 
-    // Stats calculation fallbacks
-    const totalOrdersCount = c.totalOrders || ordersList.length || 0;
-    const totalSpentAmt = c.totalSpent || ordersList.reduce((sum, o) => sum + (Number(o.grandTotal) || 0), 0);
-    const coinsBalance = c.rewardCoins || 0;
+    const totalOrdersCount = Number(c.totalOrders) || ordersList.length || 0;
+    const totalSpentAmt = Number(c.totalSpent) || 0;
+    const coinsBalance = Number(c.rewardCoins) || 0;
 
     document.getElementById('ccName').innerText = displayName;
     document.getElementById('ccPhone').innerText = c.phone || cleanPhone;
@@ -278,13 +262,11 @@ async function searchCustomer(phone) {
     document.getElementById('ccOrders').innerText = totalOrdersCount;
     document.getElementById('ccSpent').innerText = totalSpentAmt;
 
-    // Reset collapse state FIRST
     resetPrevOrdersCollapse();
 
     const prevBox = document.getElementById('ccPrevOrders');
     const countEl = document.getElementById('prevOrdersCount');
 
-    // NOW update badge count to correct orders count
     if (countEl) countEl.innerText = String(ordersList.length);
 
     if (prevBox) {
@@ -311,7 +293,8 @@ async function searchCustomer(phone) {
 
     const redeemToggle = document.getElementById('redeemCoinsToggle');
     if (redeemToggle) {
-      redeemToggle.disabled = coinsBalance < 20;
+      redeemToggle.disabled = (coinsBalance < 20);
+      if (coinsBalance < 20) redeemToggle.checked = false;
     }
     document.getElementById('availableCoinsText').innerText = coinsBalance;
     calculateTotals();
@@ -371,7 +354,6 @@ function resetCustomerInfo() {
   calculateTotals();
 }
 
-// ========== COLLAPSIBLE PREVIOUS ORDERS LOGIC ==========
 window.togglePrevOrders = function() {
   const box = document.getElementById('ccPrevOrdersBox');
   const btn = document.getElementById('prevOrdersToggle');
@@ -406,7 +388,6 @@ function resetPrevOrdersCollapse() {
   if (plus) plus.innerText = '+';
 }
 
-// --- 3. Customization Modal ---
 function openModal(product) {
   modalState = {
     product,
@@ -533,7 +514,6 @@ function updateModalPrice() {
   document.getElementById('modalPrice').innerText = `₹${unitPrice * qty}`;
 }
 
-// --- 4. Cart Management ---
 function addToCartDirect(product) {
   cart.push({
     product,
@@ -639,7 +619,6 @@ window.removeCartItem = function(index) {
   renderCart();
 };
 
-// --- 5. Table Existing Order Loader ---
 async function loadExistingOrder() {
   try {
     const res = await fetch(`${API_URL}/orders/${runningOrderId}`, {
@@ -690,7 +669,6 @@ async function loadExistingOrder() {
   }
 }
 
-// --- 6. Calculation Logic ---
 function toggleDeliveryFields() {
   const orderTypeNode = document.querySelector('input[name="orderType"]:checked');
   const orderType = orderTypeNode ? orderTypeNode.value : 'dine-in';
@@ -751,14 +729,18 @@ function calculateTotals() {
   const redeemToggle = document.getElementById('redeemCoinsToggle');
 
   if (redeemToggle && redeemToggle.checked && currentCustomer) {
-    const available = currentCustomer.customer.rewardCoins || 0;
-    coinsToUse = Math.floor(available / 20) * 20;
-    coinsDiscount = (coinsToUse / 20) * 5;
-
-    const maxAllowed = Math.max(totalSubtotal - discount, 0);
-    if (coinsDiscount > maxAllowed) {
-      coinsToUse = Math.floor(maxAllowed / 5) * 20;
+    const available = Number(currentCustomer.customer?.rewardCoins) || 0;
+    if (available >= 20) {
+      coinsToUse = Math.floor(available / 20) * 20;
       coinsDiscount = (coinsToUse / 20) * 5;
+
+      const maxAllowed = Math.max(totalSubtotal - discount, 0);
+      if (coinsDiscount > maxAllowed) {
+        coinsToUse = Math.floor(maxAllowed / 5) * 20;
+        coinsDiscount = (coinsToUse / 20) * 5;
+      }
+    } else {
+      redeemToggle.checked = false;
     }
   }
 
@@ -825,7 +807,8 @@ document.getElementById('payBtn')?.addEventListener('click', async () => {
     return;
   }
 
-  const customerPhone = document.getElementById('customerPhone')?.value.trim() || '';
+  const rawPhone = document.getElementById('customerPhone')?.value.trim() || '';
+  const customerPhone = rawPhone.replace(/[^0-9]/g, '').slice(-10);
   const customerName = document.getElementById('customerName')?.value.trim() || '';
   const custAddrEl = document.getElementById('customerAddress');
   const customerAddress = custAddrEl ? custAddrEl.value.trim() : '';
@@ -833,7 +816,7 @@ document.getElementById('payBtn')?.addEventListener('click', async () => {
   const orderType = orderTypeNode ? orderTypeNode.value : 'dine-in';
 
   if (orderType === 'delivery') {
-    if (!customerPhone) return alert('Phone number is required for Delivery!');
+    if (!customerPhone || customerPhone.length < 10) return alert('Valid 10-digit phone number is required for Delivery!');
     if (!customerAddress) return alert('Address is required for Delivery!');
   }
 
