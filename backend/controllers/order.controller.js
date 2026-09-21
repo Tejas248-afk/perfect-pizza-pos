@@ -2,6 +2,9 @@ const Order = require('../models/Order');
 const Customer = require('../models/Customer');
 const Branch = require('../models/Branch');
 
+// Helper: 1 Coin for every ₹20 spent
+const calculateEarnedCoins = (amount) => Math.floor((Number(amount) || 0) / 20);
+
 // @desc    Create new order
 // @route   POST /api/orders
 // @access  Private
@@ -37,9 +40,9 @@ const createOrder = async (req, res) => {
     branch.currentInvoiceNumber += 1;
     await branch.save();
 
-    // 2. Handle Customer & Rewards Persistence
+    // 2. Handle Customer & Reward Coins Persistence
     let customer = null;
-    let rewardCoinsEarned = 0;
+    let rewardCoinsEarned = calculateEarnedCoins(grandTotal);
 
     if (customerPhone) {
       const cleanPhone = String(customerPhone).trim().replace(/[^0-9]/g, '').slice(-10);
@@ -67,26 +70,22 @@ const createOrder = async (req, res) => {
         }
       }
 
-      // Redeem coins if requested
+      // Deduct Used Coins
       const coinsToRedeem = Number(rewardCoinsUsed) || 0;
       if (coinsToRedeem > 0) {
-        const currentCoins = Number(customer.rewardCoins) || 0;
-        if (currentCoins < coinsToRedeem) {
+        const currentBalance = Number(customer.rewardCoins) || 0;
+        if (currentBalance < coinsToRedeem) {
           return res.status(400).json({ message: 'Not enough reward coins' });
         }
-        if (coinsToRedeem % 20 !== 0) {
-          return res.status(400).json({ message: 'Coins must be redeemed in multiples of 20' });
-        }
-        customer.rewardCoins = currentCoins - coinsToRedeem;
+        customer.rewardCoins = currentBalance - coinsToRedeem;
       }
 
-      // Earn Rewards: Order > 100 ? 20 coins : 10 coins
-      rewardCoinsEarned = Number(grandTotal) > 100 ? 20 : 10;
-
+      // Add Earned Coins to Balance
       customer.rewardCoins = (Number(customer.rewardCoins) || 0) + rewardCoinsEarned;
       customer.totalOrders = (Number(customer.totalOrders) || 0) + 1;
       customer.totalSpent = (Number(customer.totalSpent) || 0) + Number(grandTotal);
 
+      // Save to MongoDB
       await customer.save();
     }
 
@@ -136,7 +135,7 @@ const createOrder = async (req, res) => {
   }
 };
 
-// @desc    Lookup customer by phone (WITH AUTO SYNC FIX)
+// @desc    Lookup customer by phone (AUTO RE-CALCULATE COINS BALANCE)
 // @route   GET /api/orders/customer/:phone
 // @access  Private
 const lookupCustomer = async (req, res) => {
@@ -148,7 +147,7 @@ const lookupCustomer = async (req, res) => {
       return res.status(400).json({ message: 'Valid 10-digit phone number is required' });
     }
 
-    // Fetch all previous orders for this phone number
+    // Fetch all orders for this customer
     const allOrders = await Order.find({
       $or: [
         { 'customer.phone': cleanPhone },
@@ -158,7 +157,7 @@ const lookupCustomer = async (req, res) => {
 
     let customer = await Customer.findOne({ phone: cleanPhone });
 
-    // Check if there is a real name in order history
+    // Find real name from order history if available
     let realNameFromOrders = '';
     allOrders.forEach(o => {
       const n = o.customer?.name || o.customerName || '';
@@ -171,39 +170,38 @@ const lookupCustomer = async (req, res) => {
     const computedOrdersCount = nonCancelled.length;
     const computedSpent = nonCancelled.reduce((sum, o) => sum + (Number(o.grandTotal) || 0), 0);
 
+    // Re-calculate Total Net Coins Balance from History
+    const computedCoinsBalance = nonCancelled.reduce((sum, o) => {
+      const earned = (o.rewardCoinsEarned != null) ? Number(o.rewardCoinsEarned) : calculateEarnedCoins(o.grandTotal);
+      const used = Number(o.rewardCoinsUsed) || 0;
+      return sum + earned - used;
+    }, 0);
+
+    const exactCoins = Math.max(0, computedCoinsBalance);
+
     if (!customer) {
       if (allOrders.length === 0) {
         return res.json({ found: false });
       }
-      // Auto-create Customer profile if missing
-      const computedCoins = nonCancelled.reduce((sum, o) => sum + (Number(o.rewardCoinsEarned) || (o.grandTotal > 100 ? 20 : 10)), 0);
       customer = new Customer({
         phone: cleanPhone,
         name: realNameFromOrders || 'Guest',
-        rewardCoins: computedCoins,
+        rewardCoins: exactCoins,
         totalOrders: computedOrdersCount,
         totalSpent: computedSpent
       });
       await customer.save();
     } else {
-      let needsSave = false;
-      // Sync Real Name
+      // Auto-Sync and Heal DB Data
+      customer.rewardCoins = exactCoins;
+      customer.totalOrders = computedOrdersCount;
+      customer.totalSpent = computedSpent;
+
       if ((!customer.name || customer.name.toLowerCase() === 'guest') && realNameFromOrders) {
         customer.name = realNameFromOrders;
-        needsSave = true;
       }
-      // Sync Stats if desynced
-      if ((customer.totalOrders || 0) === 0 && computedOrdersCount > 0) {
-        customer.totalOrders = computedOrdersCount;
-        customer.totalSpent = computedSpent;
-        if ((customer.rewardCoins || 0) === 0) {
-          customer.rewardCoins = nonCancelled.reduce((sum, o) => sum + (Number(o.rewardCoinsEarned) || (o.grandTotal > 100 ? 20 : 10)), 0);
-        }
-        needsSave = true;
-      }
-      if (needsSave) {
-        await customer.save();
-      }
+
+      await customer.save();
     }
 
     const previousOrders = allOrders.slice(0, 5).map(o => ({
