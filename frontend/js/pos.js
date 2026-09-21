@@ -89,6 +89,20 @@ function initPOS() {
     if (dineInRadio) dineInRadio.checked = true;
     document.querySelectorAll('input[name="orderType"]').forEach((r) => (r.disabled = true));
 
+const customerPhone = (document.getElementById('customerPhone')?.value || '')
+  .replace(/[^0-9]/g, '')
+  .slice(-10);
+
+const orderData = {
+  orderType, // dine-in | delivery | takeaway
+  customerPhone,
+  customerName: document.getElementById('customerName')?.value?.trim() || '',
+  // ...
+  rewardCoinsUsed: window._rewardCoinsUsed || 0,
+  rewardCoinsValue: window._rewardCoinsValue || 0,
+  grandTotal: parseInt(document.getElementById('cartTotal')?.innerText.replace('₹', '') || 0),
+};
+
     if (posMode === 'dine-in') {
       document.getElementById('payBtn').innerText = '👨‍🍳 START TABLE & SEND KOT';
       document.getElementById('paymentMethod').disabled = true;

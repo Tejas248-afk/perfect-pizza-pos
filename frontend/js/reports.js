@@ -400,8 +400,41 @@ function generateReportInvoice(order) {
     hour: "2-digit", minute: "2-digit", hour12: true,
   });
 
+  const orderType = String(order.orderType || "").toUpperCase();
+  const isDelivery = orderType === "DELIVERY";
+
   const custName = order.customer?.name && order.customer.name !== "N/A" ? order.customer.name : "Guest";
   const custPhone = order.customer?.phone && order.customer.phone !== "N/A" ? order.customer.phone : "";
+
+  // 🔥 Address fail-safe (same as Live Orders / KOT)
+  const address = (
+    order.deliveryAddress ||
+    order.customerAddress ||
+    order.customer?.address ||
+    order.address ||
+    ""
+  ).trim();
+
+  // Delivery / Customer block
+  let customerBlock = `
+    <div><b>Customer:</b> ${custName}${custPhone ? " | " + custPhone : ""}</div>
+  `;
+
+  if (isDelivery) {
+    customerBlock += `
+      <div style="margin-top:6px; padding:6px; border:1px dashed #000;">
+        <b>📍 DELIVERY ADDRESS:</b><br>
+        <span style="font-weight:700; white-space:pre-wrap;">${
+          address || "Address not provided"
+        }</span>
+      </div>
+    `;
+  } else if (address && orderType === "DINE-IN") {
+    customerBlock += `<div><b>Table:</b> ${address}</div>`;
+  } else if (address) {
+    customerBlock += `<div><b>Address:</b> ${address}</div>`;
+  }
+
   const subtotal = Number(order.subtotal) || 0;
   const discount = Number(order.discount) || 0;
   const coinsVal = Number(order.rewardCoinsValue) || 0;
@@ -423,9 +456,9 @@ function generateReportInvoice(order) {
       <hr style="border-top:1px dashed #000;"/>
       <div><b>Bill No:</b> ${order.orderNumber || "-"}</div>
       <div><b>Date:</b> ${date}</div>
-      <div><b>Type:</b> ${(order.orderType || "").toUpperCase()}</div>
-      <div><b>Customer:</b> ${custName}${custPhone ? " | " + custPhone : ""}</div>
+      <div><b>Type:</b> ${orderType}</div>
       <div><b>Status:</b> ${order.status || "-"}</div>
+      ${customerBlock}
       <hr style="border-top:1px dashed #000;"/>
       ${itemsHtml}
       <hr style="border-top:1px dashed #000;"/>

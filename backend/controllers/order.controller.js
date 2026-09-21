@@ -2,8 +2,12 @@ const Order = require('../models/Order');
 const Customer = require('../models/Customer');
 const Branch = require('../models/Branch');
 
-// Helper: 1 Coin for every ₹20 spent
+// ✅ Same rule for dine-in / delivery / takeaway
+// ₹20 spent = 1 coin
 const calculateEarnedCoins = (amount) => Math.floor((Number(amount) || 0) / 20);
+
+const cleanPhoneNumber = (phone) =>
+  String(phone || '').replace(/[^0-9]/g, '').slice(-10);
 
 // @desc    Create new order
 // @route   POST /api/orders
@@ -29,6 +33,8 @@ const createOrder = async (req, res) => {
     } = req.body;
 
     const branchId = req.user?.branch?._id || req.user?.branch;
+    const type = String(orderType || '').toLowerCase().trim(); // dine-in | delivery | takeaway
+    const payMethod = String(paymentMethod || 'cash').toLowerCase().trim();
 
     // 1. Generate Invoice Number
     const branch = await Branch.findById(branchId);
@@ -40,26 +46,33 @@ const createOrder = async (req, res) => {
     branch.currentInvoiceNumber += 1;
     await branch.save();
 
-    // 2. Handle Customer & Reward Coins Persistence
+    // 2. Customer + Coins (ALL order types)
     let customer = null;
-    let rewardCoinsEarned = calculateEarnedCoins(grandTotal);
+    let rewardCoinsEarned = 0;
 
-    if (customerPhone) {
-      const cleanPhone = String(customerPhone).trim().replace(/[^0-9]/g, '').slice(-10);
-      const inputName = customerName ? customerName.trim() : '';
-      const inputAddr = (deliveryAddress || customerAddress || '').trim();
+    const cleanPhone = cleanPhoneNumber(customerPhone);
+    const hasValidPhone = cleanPhone.length === 10;
+    const inputName = customerName ? String(customerName).trim() : '';
+    const inputAddr = String(deliveryAddress || customerAddress || '').trim();
 
+    // pending = table start KOT (final bill baad me) -> coins mat do abhi
+    const isPendingPayment = payMethod === 'pending';
+
+    if (hasValidPhone) {
       customer = await Customer.findOne({ phone: cleanPhone });
 
       if (!customer) {
         customer = new Customer({
           branch: branchId,
           phone: cleanPhone,
-          name: (inputName && inputName.toLowerCase() !== 'guest') ? inputName : 'Guest',
+          name:
+            inputName && inputName.toLowerCase() !== 'guest'
+              ? inputName
+              : 'Guest',
           address: inputAddr,
           rewardCoins: 0,
           totalOrders: 0,
-          totalSpent: 0
+          totalSpent: 0,
         });
       } else {
         if (inputName && inputName.toLowerCase() !== 'guest') {
@@ -70,26 +83,45 @@ const createOrder = async (req, res) => {
         }
       }
 
-      // Deduct Used Coins
+      // Redeem coins (if any)
       const coinsToRedeem = Number(rewardCoinsUsed) || 0;
       if (coinsToRedeem > 0) {
         const currentBalance = Number(customer.rewardCoins) || 0;
         if (currentBalance < coinsToRedeem) {
           return res.status(400).json({ message: 'Not enough reward coins' });
         }
+        // POS multiples of 20 use karta hai
+        if (coinsToRedeem % 20 !== 0) {
+          return res
+            .status(400)
+            .json({ message: 'Coins must be redeemed in multiples of 20' });
+        }
         customer.rewardCoins = currentBalance - coinsToRedeem;
       }
 
-      // Add Earned Coins to Balance
-      customer.rewardCoins = (Number(customer.rewardCoins) || 0) + rewardCoinsEarned;
-      customer.totalOrders = (Number(customer.totalOrders) || 0) + 1;
-      customer.totalSpent = (Number(customer.totalSpent) || 0) + Number(grandTotal);
+      // ✅ Earn coins for dine-in + delivery + takeaway
+      // only when bill is actual payment (not pending table open)
+      if (!isPendingPayment) {
+        rewardCoinsEarned = calculateEarnedCoins(grandTotal);
+        customer.rewardCoins =
+          (Number(customer.rewardCoins) || 0) + rewardCoinsEarned;
+        customer.totalOrders = (Number(customer.totalOrders) || 0) + 1;
+        customer.totalSpent =
+          (Number(customer.totalSpent) || 0) + Number(grandTotal || 0);
+      }
 
-      // Save to MongoDB
       await customer.save();
+
+      console.log(
+        `🪙 COINS | type=${type || 'n/a'} | pay=${payMethod} | phone=${cleanPhone} | earned=+${rewardCoinsEarned} | balance=${customer.rewardCoins}`
+      );
+    } else {
+      // No phone = Guest = no coins (any type)
+      rewardCoinsEarned = 0;
     }
 
-    let finalAddress = (deliveryAddress || customerAddress || '').trim();
+    // Address fail-safe
+    let finalAddress = inputAddr;
     if (!finalAddress && customer && customer.address) {
       finalAddress = customer.address;
     }
@@ -100,8 +132,18 @@ const createOrder = async (req, res) => {
       orderNumber: invoiceNo,
       orderType,
       customer: customer
-        ? { name: customer.name, phone: customer.phone, id: customer._id }
-        : { name: (customerName && customerName !== 'Guest') ? customerName : 'Guest', phone: customerPhone || 'N/A' },
+        ? {
+            name: customer.name,
+            phone: customer.phone,
+            id: customer._id,
+          }
+        : {
+            name:
+              inputName && inputName.toLowerCase() !== 'guest'
+                ? inputName
+                : 'Guest',
+            phone: hasValidPhone ? cleanPhone : customerPhone || 'N/A',
+          },
       deliveryAddress: finalAddress,
       items,
       subtotal: Number(subtotal) || 0,
@@ -119,6 +161,7 @@ const createOrder = async (req, res) => {
 
     const createdOrder = await order.save();
 
+    // 4. Realtime
     const io = req.app.get('io');
     if (io) {
       io.emit('newOrder', createdOrder);
@@ -141,38 +184,50 @@ const createOrder = async (req, res) => {
 const lookupCustomer = async (req, res) => {
   try {
     const rawPhone = req.params.phone ? req.params.phone.trim() : '';
-    const cleanPhone = rawPhone.replace(/[^0-9]/g, '').slice(-10);
+    const cleanPhone = cleanPhoneNumber(rawPhone);
 
     if (!cleanPhone || cleanPhone.length < 10) {
-      return res.status(400).json({ message: 'Valid 10-digit phone number is required' });
+      return res
+        .status(400)
+        .json({ message: 'Valid 10-digit phone number is required' });
     }
 
-    // Fetch all orders for this customer
     const allOrders = await Order.find({
-      $or: [
-        { 'customer.phone': cleanPhone },
-        { 'customer.phone': rawPhone }
-      ]
+      $or: [{ 'customer.phone': cleanPhone }, { 'customer.phone': rawPhone }],
     }).sort({ createdAt: -1 });
 
     let customer = await Customer.findOne({ phone: cleanPhone });
 
-    // Find real name from order history if available
+    // Real name from history
     let realNameFromOrders = '';
-    allOrders.forEach(o => {
+    allOrders.forEach((o) => {
       const n = o.customer?.name || o.customerName || '';
       if (n && n.toLowerCase() !== 'guest' && !realNameFromOrders) {
         realNameFromOrders = n;
       }
     });
 
-    const nonCancelled = allOrders.filter(o => !['cancelled', 'canceled'].includes(String(o.status || '').toLowerCase()));
-    const computedOrdersCount = nonCancelled.length;
-    const computedSpent = nonCancelled.reduce((sum, o) => sum + (Number(o.grandTotal) || 0), 0);
+    // Only count paid/non-cancelled orders for stats
+    const nonCancelled = allOrders.filter((o) => {
+      const st = String(o.status || '').toLowerCase();
+      const pay = String(o.paymentMethod || '').toLowerCase();
+      if (['cancelled', 'canceled', 'cancel', 'rejected'].includes(st)) return false;
+      // pending table open orders ko stats se hatao
+      if (pay === 'pending') return false;
+      return true;
+    });
 
-    // Re-calculate Total Net Coins Balance from History
+    const computedOrdersCount = nonCancelled.length;
+    const computedSpent = nonCancelled.reduce(
+      (sum, o) => sum + (Number(o.grandTotal) || 0),
+      0
+    );
+
     const computedCoinsBalance = nonCancelled.reduce((sum, o) => {
-      const earned = (o.rewardCoinsEarned != null) ? Number(o.rewardCoinsEarned) : calculateEarnedCoins(o.grandTotal);
+      const earned =
+        o.rewardCoinsEarned != null
+          ? Number(o.rewardCoinsEarned)
+          : calculateEarnedCoins(o.grandTotal);
       const used = Number(o.rewardCoinsUsed) || 0;
       return sum + earned - used;
     }, 0);
@@ -188,23 +243,25 @@ const lookupCustomer = async (req, res) => {
         name: realNameFromOrders || 'Guest',
         rewardCoins: exactCoins,
         totalOrders: computedOrdersCount,
-        totalSpent: computedSpent
+        totalSpent: computedSpent,
       });
       await customer.save();
     } else {
-      // Auto-Sync and Heal DB Data
       customer.rewardCoins = exactCoins;
       customer.totalOrders = computedOrdersCount;
       customer.totalSpent = computedSpent;
 
-      if ((!customer.name || customer.name.toLowerCase() === 'guest') && realNameFromOrders) {
+      if (
+        (!customer.name || customer.name.toLowerCase() === 'guest') &&
+        realNameFromOrders
+      ) {
         customer.name = realNameFromOrders;
       }
 
       await customer.save();
     }
 
-    const previousOrders = allOrders.slice(0, 5).map(o => ({
+    const previousOrders = allOrders.slice(0, 5).map((o) => ({
       _id: o._id,
       orderNumber: o.orderNumber,
       grandTotal: o.grandTotal,
@@ -213,7 +270,7 @@ const lookupCustomer = async (req, res) => {
       status: o.status,
       items: o.items,
       deliveryAddress: o.deliveryAddress,
-      customer: o.customer
+      customer: o.customer,
     }));
 
     res.json({
@@ -227,6 +284,7 @@ const lookupCustomer = async (req, res) => {
   }
 };
 
+// @desc    Get orders
 const getOrders = async (req, res) => {
   try {
     const branchId = req.user?.branch?._id || req.user?.branch;
@@ -234,10 +292,7 @@ const getOrders = async (req, res) => {
 
     let filter = {};
     if (branchId) filter.branch = branchId;
-
-    if (status) {
-      filter.status = status;
-    }
+    if (status) filter.status = status;
 
     if (today === 'true') {
       const start = new Date();
@@ -255,6 +310,7 @@ const getOrders = async (req, res) => {
   }
 };
 
+// @desc    Get order by ID
 const getOrderById = async (req, res) => {
   try {
     const order = await Order.findById(req.params.id);
@@ -265,19 +321,57 @@ const getOrderById = async (req, res) => {
   }
 };
 
+// @desc    Update order status
+// when completed + was pending -> finalize coins (dine-in final bill support)
 const updateOrderStatus = async (req, res) => {
   try {
-    const { status } = req.body;
+    const { status, paymentMethod } = req.body;
     const order = await Order.findById(req.params.id);
 
     if (!order) {
       return res.status(404).json({ message: 'Order not found' });
     }
 
+    const oldPay = String(order.paymentMethod || '').toLowerCase();
+    const newStatus = String(status || '').toLowerCase();
+
     order.status = status;
-    if (status === 'completed') {
+    if (paymentMethod) {
+      order.paymentMethod = paymentMethod;
+    }
+
+    if (newStatus === 'completed') {
       order.completedAt = new Date();
     }
+
+    // ✅ Dine-in finalization:
+    // agar pehle pending tha aur ab completed + phone hai + coins abhi 0 hain
+    // to ab coins add kar do
+    const phone = cleanPhoneNumber(order.customer?.phone);
+    const shouldFinalizeCoins =
+      newStatus === 'completed' &&
+      oldPay === 'pending' &&
+      phone.length === 10 &&
+      (Number(order.rewardCoinsEarned) || 0) === 0;
+
+    if (shouldFinalizeCoins) {
+      const earned = calculateEarnedCoins(order.grandTotal);
+      order.rewardCoinsEarned = earned;
+
+      const customer = await Customer.findOne({ phone });
+      if (customer) {
+        customer.rewardCoins = (Number(customer.rewardCoins) || 0) + earned;
+        customer.totalOrders = (Number(customer.totalOrders) || 0) + 1;
+        customer.totalSpent =
+          (Number(customer.totalSpent) || 0) + Number(order.grandTotal || 0);
+        await customer.save();
+
+        console.log(
+          `🪙 FINALIZE DINE-IN COINS | phone=${phone} | earned=+${earned} | balance=${customer.rewardCoins}`
+        );
+      }
+    }
+
     await order.save();
 
     const io = req.app.get('io');
