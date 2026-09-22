@@ -101,7 +101,7 @@ Singhpur Chauraha, Bithoor Rd, Kalyanpur, Kanpur
 }
 
 /**
- * Universal Powerstext Sender with Detailed Logging
+ * Advanced Scanner for Powerstext Root PHP & API Endpoints
  */
 async function sendViaPowerstext(to91, message) {
   if (WORKING_ENDPOINT_CACHE) {
@@ -114,7 +114,8 @@ async function sendViaPowerstext(to91, message) {
         timeout: 10000,
         validateStatus: () => true
       });
-      if (res.status >= 200 && res.status < 300) {
+      const resStr = typeof res.data === 'object' ? JSON.stringify(res.data) : String(res.data || '');
+      if (res.status >= 200 && res.status < 300 && !resStr.toLowerCase().includes('not found')) {
         return { ok: true, response: res.data };
       }
     } catch (e) {
@@ -122,60 +123,44 @@ async function sendViaPowerstext(to91, message) {
     }
   }
 
-  const bases = ['http://wapp.powerstext.in', 'https://wapp.powerstext.in'];
+  const bases = ['https://wapp.powerstext.in', 'http://wapp.powerstext.in'];
   
-  // All known Indian WhatsApp PHP Panel Endpoints
+  // Powerstext PHP Root & API Endpoints list
   const endpoints = [
+    // 1. Root Level PHP Scripts (Most common in Powerstext/PHP Panels)
+    { path: '/sendtext.php', method: 'GET', params: (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: num, message: msg }) },
+    { path: '/sendtext.php', method: 'GET', params: (num, msg) => ({ user: POWERSTEXT_USER, pass: POWERSTEXT_PASS, to: num, message: msg }) },
+    { path: '/sendsms.php', method: 'GET', params: (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: num, message: msg }) },
+    { path: '/send_sms.php', method: 'GET', params: (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, mobile: num, message: msg }) },
+    { path: '/send.php', method: 'GET', params: (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: num, message: msg }) },
+    { path: '/send-message.php', method: 'GET', params: (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: num, message: msg }) },
+    { path: '/api.php', method: 'GET', params: (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: num, message: msg }) },
+    { path: '/whatsapp.php', method: 'GET', params: (num, msg) => ({ user: POWERSTEXT_USER, pass: POWERSTEXT_PASS, mobile: num, msg: msg }) },
+    
+    // 2. Dashed API Paths
+    { path: '/api/send-text', method: 'GET', params: (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: num, message: msg }) },
+    { path: '/api/send-message', method: 'GET', params: (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: num, message: msg }) },
+    { path: '/api/send-whatsapp', method: 'GET', params: (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: num, message: msg }) },
+    { path: '/api/send-sms', method: 'GET', params: (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: num, message: msg }) },
+    { path: '/api/send_sms.php', method: 'GET', params: (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, mobile: num, message: msg }) },
+    { path: '/api/sendsms.php', method: 'GET', params: (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: num, message: msg }) },
+
+    // 3. Direct Route paths
+    { path: '/send-message', method: 'GET', params: (num, msg) => ({ user: POWERSTEXT_USER, pass: POWERSTEXT_PASS, to: num, message: msg }) },
+    { path: '/send-text', method: 'GET', params: (num, msg) => ({ user: POWERSTEXT_USER, pass: POWERSTEXT_PASS, to: num, message: msg }) },
+
+    // 4. POST Form-Data Attempts
     {
-      path: '/api/sendtext.php',
-      method: 'GET',
-      params: (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: num, message: msg })
-    },
-    {
-      path: '/api/sendtext.php',
-      method: 'GET',
-      params: (num, msg) => ({ user: POWERSTEXT_USER, pass: POWERSTEXT_PASS, to: num, message: msg })
-    },
-    {
-      path: '/api/send.php',
-      method: 'GET',
-      params: (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: num, message: msg })
-    },
-    {
-      path: '/api/send.php',
-      method: 'GET',
-      params: (num, msg) => ({ user: POWERSTEXT_USER, pass: POWERSTEXT_PASS, to: num, msg: msg })
-    },
-    {
-      path: '/api/sendtext',
-      method: 'GET',
-      params: (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: num, message: msg })
-    },
-    {
-      path: '/api/send',
-      method: 'GET',
-      params: (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: num, message: msg })
-    },
-    {
-      path: '/send_message.php',
-      method: 'GET',
-      params: (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: num, message: msg })
-    },
-    {
-      path: '/send_message',
-      method: 'GET',
-      params: (num, msg) => ({ user: POWERSTEXT_USER, pass: POWERSTEXT_PASS, phone: num, text: msg })
-    },
-    {
-      path: '/api/v1/send',
-      method: 'POST',
-      data: (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: num, message: msg })
-    },
-    {
-      path: '/api/sendtext.php',
+      path: '/sendtext.php',
       method: 'POST',
       data: (num, msg) => new URLSearchParams({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: num, message: msg }).toString(),
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+    },
+    {
+      path: '/api/send-text',
+      method: 'POST',
+      data: (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: num, message: msg }),
+      headers: { 'Content-Type': 'application/json' }
     }
   ];
 
@@ -199,14 +184,23 @@ async function sendViaPowerstext(to91, message) {
         const res = await axios(config);
         const resStr = typeof res.data === 'object' ? JSON.stringify(res.data) : String(res.data || '');
 
-        console.log(`🌐 WA Attempt [${ep.method} ${fullUrl}] -> Status: ${res.status} | Res: ${resStr.slice(0, 100)}`);
+        // Log non-404 responses
+        if (res.status !== 404) {
+          console.log(`🌐 WA Attempt [${ep.method} ${fullUrl}] -> Status: ${res.status} | Res: ${resStr.slice(0, 120)}`);
+        }
 
-        if (res.status >= 200 && res.status < 300 && !resStr.includes('404 Not Found')) {
-          console.log(`🎉 SUCCESS! Working Powerstext Endpoint: ${fullUrl}`);
+        const isSuccess =
+          res.status >= 200 &&
+          res.status < 300 &&
+          !resStr.toLowerCase().includes('404 not found') &&
+          !resStr.toLowerCase().includes('file not found');
+
+        if (isSuccess) {
+          console.log(`🎉 SUCCESS! Found Working Powerstext Endpoint: ${fullUrl}`);
           WORKING_ENDPOINT_CACHE = { method: ep.method, url: fullUrl, params: ep.params, data: ep.data };
           return { ok: true, response: res.data, url: fullUrl };
-        } else {
-          lastError = new Error(`HTTP ${res.status}: ${resStr.slice(0, 80)}`);
+        } else if (res.status !== 404) {
+          lastError = new Error(`HTTP ${res.status}: ${resStr.slice(0, 100)}`);
         }
       } catch (err) {
         lastError = err;
@@ -214,7 +208,7 @@ async function sendViaPowerstext(to91, message) {
     }
   }
 
-  throw lastError || new Error('All Powerstext endpoints failed');
+  throw lastError || new Error('All Powerstext endpoints returned 404/Error');
 }
 
 /**
