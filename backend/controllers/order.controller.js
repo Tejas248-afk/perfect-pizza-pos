@@ -410,3 +410,10 @@ module.exports = {
   updateOrderStatus,
   addKotItems
 };
+// 🔥 AUTO WHATSAPP INVOICE
+if (cleanPhone !== 'N/A' && String(payMethod).toLowerCase() !== 'pending') {
+  // fire-and-forget (order response delay na ho)
+  setImmediate(() => {
+    sendDirectWhatsAppMessage(cleanPhone, newOrder);
+  });
+}

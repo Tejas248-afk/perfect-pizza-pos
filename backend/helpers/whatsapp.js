@@ -1,68 +1,217 @@
-/**
- * Powerstext WhatsApp API Helper (Master Fix with URL Query + Body Fallback)
- */
-async function sendDirectWhatsAppMessage(phone, order) {
-  try {
-    console.log(`📱 [WhatsApp Helper] Called for Phone: "${phone}"`);
+const axios = require('axios');
 
-    let cleanPhone = String(phone || '').replace(/[^0-9]/g, '');
+const POWERSTEXT_BASE_URL = (process.env.POWERSTEXT_BASE_URL || 'https://wapp.powerstext.in').replace(/\/$/, '');
+const POWERSTEXT_USER = process.env.POWERSTEXT_USER || 'PerfectPizzaWHATPP';
+const POWERSTEXT_PASS = process.env.POWERSTEXT_PASS || 'edf65';
+const INVOICE_BASE_URL = (process.env.INVOICE_BASE_URL || 'https://pizzapos.netlify.app').replace(/\/$/, '');
 
-    if (cleanPhone.length >= 10) {
-      cleanPhone = '91' + cleanPhone.slice(-10); // Exact 91 + 10 Digits
-    } else {
-      console.log(`⚠️ [WhatsApp Helper] Skipped: Phone "${phone}" is invalid.`);
-      return;
-    }
+// 10 digit -> 91XXXXXXXXXX
+function toWhatsAppNumber(phone) {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (!digits) return null;
+  const last10 = digits.slice(-10);
+  if (last10.length !== 10) return null;
+  return `91${last10}`;
+}
 
-    const name = order.customerName || order.customer?.name || 'Valued Customer';
-    const amount = order.grandTotal || 0;
-    const trackerUrl = `https://perfect-pizza-pos.netlify.app/track.html?id=${order._id}`;
+function formatDateTime(dateInput) {
+  const d = new Date(dateInput || Date.now());
+  const date = d.toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'Asia/Kolkata',
+  });
+  const time = d.toLocaleTimeString('en-IN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: 'Asia/Kolkata',
+  });
+  return { date, time };
+}
 
-    // WhatsApp Message Content
-    const messageText = `🙏 Thank You for Ordering from *Perfect Pizza!* 🍕
+function buildInvoiceMessage(order) {
+  const name =
+    order?.customer?.name && order.customer.name !== 'Guest'
+      ? order.customer.name
+      : 'Customer';
+
+  const billNo = order?.orderNumber || '-';
+  const amount = Number(order?.grandTotal || 0);
+  const paidAmount =
+    String(order?.paymentMethod || '').toLowerCase() === 'pending'
+      ? 0
+      : amount;
+
+  const rewardPoints = Number(order?.rewardCoinsEarned || 0);
+  const { date, time } = formatDateTime(order?.createdAt);
+
+  const orderTypeMap = {
+    delivery: 'Home Delivery',
+    takeaway: 'Takeaway',
+    'dine-in': 'Dine-in',
+  };
+  const orderType =
+    orderTypeMap[String(order?.orderType || '').toLowerCase()] ||
+    (order?.orderType || 'Order');
+
+  // Invoice link (optional page). Agar invoice page nahi hai to bhi chalega.
+  const invoiceLink = order?._id
+    ? `${INVOICE_BASE_URL}/invoice.html?id=${order._id}`
+    : `${INVOICE_BASE_URL}`;
+
+  return (
+`🙏 Thank You for Ordering from *Perfect Pizza!* 🍕
 
 Dear *${name}*,
 Your delicious order has been received! 🍕🛵
+Thank you for choosing *Perfect Pizza*. ❤️
 
 🧾 *Invoice Details*
 ━━━━━━━━━━━━━━
 👤 *Customer:* ${name}
-🧾 *Invoice No:* ${order.orderNumber}
+🧾 *Invoice No:* ${billNo}
+📅 *Date:* ${date} ${time}
+
 💰 *Total Payable:* ₹${amount}
-🛵 *Order Type:* ${(order.orderType || 'Takeaway').toUpperCase()}
+✅ *Paid Amount:* ₹${paidAmount}
+🛵 *Order Type:* ${orderType}
+🎁 *Reward Points Earned:* ${rewardPoints}
 ━━━━━━━━━━━━━━
 
-🧾 *Track Your Order Live:*
-${trackerUrl}
+🔥 *MORE SAVINGS ONLINE!* 🔥
+🎟️ *Exclusive Online Discounts*
+🍕 *Best Offers Every Day*
+🎁 *Earn Reward Points*
+💰 *Use Rewards on Future Orders*
+
+🌐 *Order Online:* https://perfectpizzas.in/
+
+🧾 *View / Print Invoice:*
+${invoiceLink}
 
 📞 *Contact:* 9889229198
-📍 *Perfect Pizza, Kalyanpur*
+📍 *Perfect Pizza*
+Singhpur Chauraha, Bithoor Rd, Kalyanpur, Kanpur
 
-✨ *Hot, Fresh & Perfect Every Time!*`;
+✨ *Thanks again!*
+🍕 *Hot, Fresh & Perfect Every Time!*`
+  );
+}
 
-    const authenticKey = process.env.POWERSTEXT_KEY || '35315065726665637450697a7a615748415450503130301765611474';
-    const routeId = process.env.POWERSTEXT_ROUTE || '1';
-    const encodedMessage = encodeURIComponent(messageText);
+/**
+ * Powerstext sender
+ * Common endpoint patterns try karta hai.
+ */
+async function sendViaPowerstext(to91, message) {
+  const payloads = [
+    // Pattern A
+    {
+      url: `${POWERSTEXT_BASE_URL}/api/send`,
+      data: {
+        username: POWERSTEXT_USER,
+        password: POWERSTEXT_PASS,
+        number: to91,
+        message,
+      },
+    },
+    // Pattern B
+    {
+      url: `${POWERSTEXT_BASE_URL}/api/sendText`,
+      data: {
+        user: POWERSTEXT_USER,
+        pass: POWERSTEXT_PASS,
+        to: to91,
+        msg: message,
+      },
+    },
+    // Pattern C (query style some panels use)
+    {
+      url: `${POWERSTEXT_BASE_URL}/api/send`,
+      data: null,
+      params: {
+        username: POWERSTEXT_USER,
+        password: POWERSTEXT_PASS,
+        to: to91,
+        message,
+      },
+    },
+  ];
 
-    // 🔥 URL Query String including both authentic-key AND routeid
-    const apiUrl = `http://wapp.powerstext.in/http-tokenkeyapi.php?authentic-key=${authenticKey}&tokenkey=${authenticKey}&routeid=${routeId}&route=${routeId}&number=${cleanPhone}&message=${encodedMessage}`;
+  let lastError = null;
 
-    console.log(`🚀 [WhatsApp Helper] Sending Request to Powerstext for ${cleanPhone}...`);
+  for (const item of payloads) {
+    try {
+      const res = await axios({
+        method: 'POST',
+        url: item.url,
+        data: item.data || undefined,
+        params: item.params || undefined,
+        timeout: 15000,
+        headers: { 'Content-Type': 'application/json' },
+        validateStatus: () => true,
+      });
 
-    // POST Request with URL Parameters
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
+      // success heuristics
+      const ok =
+        res.status >= 200 &&
+        res.status < 300 &&
+        (res.data?.success === true ||
+          res.data?.status === 'success' ||
+          res.data?.status === true ||
+          String(res.data?.message || '').toLowerCase().includes('success') ||
+          typeof res.data === 'string' && res.data.toLowerCase().includes('success') ||
+          res.status === 200);
+
+      if (ok) {
+        return { ok: true, providerResponse: res.data, status: res.status };
       }
-    });
 
-    const responseData = await response.text();
-    console.log(`📩 [WhatsApp Helper] Response from Powerstext (${cleanPhone}):`, responseData);
+      lastError = new Error(
+        `Powerstext failed (${res.status}): ${JSON.stringify(res.data)}`
+      );
+    } catch (err) {
+      lastError = err;
+    }
+  }
 
-  } catch (error) {
-    console.error('❌ [WhatsApp Helper] Error:', error.message);
+  throw lastError || new Error('Powerstext send failed');
+}
+
+/**
+ * Main function used by order controller
+ * @param {string} phone
+ * @param {object} order
+ */
+async function sendDirectWhatsAppMessage(phone, order) {
+  try {
+    const to91 = toWhatsAppNumber(phone);
+    if (!to91) {
+      console.log('⚠️ WhatsApp skipped: invalid phone', phone);
+      return { skipped: true, reason: 'invalid_phone' };
+    }
+
+    // pending table open pe mat bhejo
+    if (String(order?.paymentMethod || '').toLowerCase() === 'pending') {
+      console.log('⚠️ WhatsApp skipped: pending payment order');
+      return { skipped: true, reason: 'pending_payment' };
+    }
+
+    const message = buildInvoiceMessage(order);
+    const result = await sendViaPowerstext(to91, message);
+
+    console.log(`✅ WhatsApp invoice sent to ${to91} | Bill: ${order?.orderNumber}`);
+    return result;
+  } catch (err) {
+    // Order create fail na ho isliye error swallow + log
+    console.error('❌ WhatsApp send error:', err.message);
+    return { ok: false, error: err.message };
   }
 }
 
-module.exports = { sendDirectWhatsAppMessage };
+module.exports = {
+  sendDirectWhatsAppMessage,
+  buildInvoiceMessage,
+  toWhatsAppNumber,
+};
