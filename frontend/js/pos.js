@@ -1,4 +1,4 @@
-// --- URLs & CONFIGURATION ---
+// --- URLs & CONFIGURATION (DEPLOYMENT READY) ---
 const RENDER_BACKEND_URL = "https://perfect-pizza-pos.onrender.com"; 
 
 window.SOCKET_URL = (window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1'))
@@ -53,6 +53,25 @@ document.addEventListener('DOMContentLoaded', () => {
   const userNameEl = document.getElementById('userName');
   if (userNameEl && user) userNameEl.innerText = `👤 ${user.name} (${user.role})`;
 });
+
+// --- Helper: Get Crust Price Fail-Safe ---
+function getCrustPrice(cObj, size) {
+  if (!cObj) return 0;
+  const s = size || 'regular';
+  if (cObj.extraPrice && typeof cObj.extraPrice === 'object') {
+    return Number(cObj.extraPrice[s]) || 0;
+  }
+  if (cObj.prices && typeof cObj.prices === 'object') {
+    return Number(cObj.prices[s]) || 0;
+  }
+  if (cObj.extraPrice !== undefined && !isNaN(Number(cObj.extraPrice))) {
+    return Number(cObj.extraPrice) || 0;
+  }
+  if (cObj.price !== undefined && !isNaN(Number(cObj.price))) {
+    return Number(cObj.price) || 0;
+  }
+  return 0;
+}
 
 // --- Global State ---
 let menuData = { categories: [], products: [], crusts: [], addons: [] };
@@ -193,7 +212,7 @@ function renderProducts(categoryId, searchQuery = '') {
   });
 }
 
-// --- 2. Customer Lookup (100% Crash-Proof) ---
+// --- 2. Customer Lookup ---
 let lookupTimer = null;
 document.getElementById('customerPhone')?.addEventListener('input', (e) => {
   const phone = e.target.value.trim();
@@ -388,12 +407,14 @@ function resetPrevOrdersCollapse() {
   if (plus) plus.innerText = '+';
 }
 
+// --- 3. Customization Modal (FIXED CRUST SELECTION & PRICE) ---
 function openModal(product) {
   modalState = {
     product,
     qty: 1,
     size: 'regular',
     crustId: null,
+    crust: null,
     addons: [],
     comboSelections: [],
   };
@@ -440,9 +461,9 @@ function openModal(product) {
 
   if (product.hasCrust) {
     let crustHTML = `<div class="modal-section radio-group"><h4>Select Crust</h4>`;
-    crustHTML += `<label><input type="radio" name="crust" value="null" checked onchange="updateModalState('crust', null)"> Classic Hand Tossed (Free)</label>`;
+    crustHTML += `<label><input type="radio" name="crust" value="null" checked onchange="updateModalState('crustId', null)"> Classic Hand Tossed (Free)</label>`;
     menuData.crusts.forEach((c) => {
-      crustHTML += `<label><input type="radio" name="crust" value="${c._id}" onchange="updateModalState('crust', '${c._id}')"> ${c.name} (+₹<span class="crust-price" data-id="${c._id}">0</span>)</label>`;
+      crustHTML += `<label><input type="radio" name="crust" value="${c._id}" onchange="updateModalState('crustId', '${c._id}')"> ${c.name} (+₹<span class="crust-price" data-id="${c._id}">0</span>)</label>`;
     });
     crustHTML += `</div>`;
     body.innerHTML += crustHTML;
@@ -467,13 +488,21 @@ window.closeModal = function() {
 }
 
 window.updateModalState = function(key, value) {
-  modalState[key] = value;
+  const cleanVal = (value === 'null' || value === 'undefined') ? null : value;
+  modalState[key] = cleanVal;
+  
+  // Sync crust vs crustId
+  if (key === 'crust' || key === 'crustId') {
+    modalState.crustId = cleanVal;
+    modalState.crust = cleanVal;
+  }
+  
   updateModalPrice();
 }
 
 window.toggleAddon = function(id, isChecked) {
   if (isChecked) modalState.addons.push(id);
-  else modalState.addons = modalState.addons.filter((a) => a !== id);
+  else modalState.addons = modalState.addons.filter((a) => String(a) !== String(id));
   updateModalPrice();
 }
 
@@ -487,23 +516,32 @@ window.updateModalQty = function(change) {
 }
 
 function updateModalPrice() {
-  const { product, size, crustId, addons, qty } = modalState;
-  let basePrice = product.hasSizes ? product.prices[size] : product.prices.single;
+  const { product, size, addons, qty } = modalState;
+  const selectedCrustId = modalState.crustId || modalState.crust;
+
+  let basePrice = product.hasSizes ? (Number(product.prices[size]) || 0) : (Number(product.prices.single) || 0);
 
   let crustPrice = 0;
   if (product.hasCrust) {
     menuData.crusts.forEach((c) => {
-      let p = c.extraPrice[size] || 0;
+      let p = getCrustPrice(c, size);
       let el = document.querySelector(`.crust-price[data-id="${c._id}"]`);
       if (el) el.innerText = p;
-      if (crustId === c._id) crustPrice = p;
+      if (selectedCrustId && String(selectedCrustId) === String(c._id)) {
+        crustPrice = p;
+      }
     });
   }
 
   let addonsTotal = 0;
   if (product.hasAddons) {
     menuData.addons.forEach((a) => {
-      let p = a.prices[size] || a.prices.regular;
+      let p = 0;
+      if (a.prices && typeof a.prices === 'object') {
+        p = Number(a.prices[size]) || Number(a.prices.regular) || 0;
+      } else {
+        p = Number(a.price) || 0;
+      }
       let el = document.querySelector(`.addon-price[data-id="${a._id}"]`);
       if (el) el.innerText = p;
       if (addons.includes(a._id)) addonsTotal += p;
@@ -514,6 +552,7 @@ function updateModalPrice() {
   document.getElementById('modalPrice').innerText = `₹${unitPrice * qty}`;
 }
 
+// --- 4. Cart Management (FIXED CRUST ADDITION) ---
 function addToCartDirect(product) {
   cart.push({
     product,
@@ -521,7 +560,7 @@ function addToCartDirect(product) {
     crust: null,
     addons: [],
     qty: 1,
-    basePrice: product.prices.single,
+    basePrice: Number(product.prices.single) || 0,
     crustPrice: 0,
     addonsTotal: 0,
     comboSelections: [],
@@ -530,7 +569,8 @@ function addToCartDirect(product) {
 }
 
 window.addToCart = function() {
-  const { product, size, crustId, addons, qty } = modalState;
+  const { product, size, addons, qty } = modalState;
+  const selectedCrustId = modalState.crustId || modalState.crust;
 
   let comboSelections = [];
   if (product.isCombo) {
@@ -540,13 +580,23 @@ window.addToCart = function() {
     });
   }
 
-  let crustObj = crustId ? menuData.crusts.find((c) => c._id === crustId) : null;
-  let addonsList = addons.map((id) => menuData.addons.find((a) => a._id === id));
+  let crustObj = (selectedCrustId && selectedCrustId !== 'null') 
+    ? menuData.crusts.find((c) => String(c._id) === String(selectedCrustId)) 
+    : null;
+    
+  let addonsList = addons.map((id) => menuData.addons.find((a) => String(a._id) === String(id))).filter(Boolean);
 
-  let basePrice = product.hasSizes ? product.prices[size] : product.prices.single;
-  let crustPrice = crustObj ? crustObj.extraPrice[size] || 0 : 0;
+  let basePrice = product.hasSizes ? (Number(product.prices[size]) || 0) : (Number(product.prices.single) || 0);
+  let crustPrice = crustObj ? getCrustPrice(crustObj, size) : 0;
+  
   let addonsTotal = 0;
-  addonsList.forEach((a) => (addonsTotal += a.prices[size] || a.prices.regular));
+  addonsList.forEach((a) => {
+    if (a.prices && typeof a.prices === 'object') {
+      addonsTotal += Number(a.prices[size]) || Number(a.prices.regular) || 0;
+    } else {
+      addonsTotal += Number(a.price) || 0;
+    }
+  });
 
   cart.push({
     product,
@@ -579,10 +629,10 @@ function renderCart() {
     </div>`;
   } else {
     cart.forEach((item, index) => {
-      let unitPrice = item.basePrice + (item.crustPrice || 0) + (item.addonsTotal || 0);
+      let unitPrice = (Number(item.basePrice) || 0) + (Number(item.crustPrice) || 0) + (Number(item.addonsTotal) || 0);
       let desc = [];
       if (item.size) desc.push(item.size.charAt(0).toUpperCase() + item.size.slice(1));
-      if (item.crust) desc.push(item.crust.name);
+      if (item.crust && item.crust.name) desc.push(`${item.crust.name} (+₹${item.crustPrice})`);
       item.addons.forEach((a) => desc.push(a.name));
       if (item.comboSelections) item.comboSelections.forEach((cs) => desc.push(cs));
 
@@ -642,7 +692,7 @@ async function loadExistingOrder() {
 
         return `<div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:4px; color:#475569;">
         <div><span>${i.qty}x ${i.product?.name || i.productName}</span>${descText}</div>
-        <span>₹${(i.basePrice + (i.crustPrice || 0) + (i.addonsTotal || 0)) * i.qty}</span>
+        <span>₹${((Number(i.basePrice) || 0) + (Number(i.crustPrice) || 0) + (Number(i.addonsTotal) || 0)) * i.qty}</span>
       </div>`;
       })
       .join('');
@@ -710,14 +760,14 @@ function calculateTotals() {
   let cartSubtotal = 0;
   cart.forEach((item) => {
     cartSubtotal +=
-      (item.basePrice + (item.crustPrice || 0) + (item.addonsTotal || 0)) * item.qty;
+      ((Number(item.basePrice) || 0) + (Number(item.crustPrice) || 0) + (Number(item.addonsTotal) || 0)) * item.qty;
   });
 
   let existingSubtotal = 0;
   if (existingOrderData && existingOrderData.items) {
     existingOrderData.items.forEach((item) => {
       existingSubtotal +=
-        (item.basePrice + (item.crustPrice || 0) + (item.addonsTotal || 0)) * item.qty;
+        ((Number(item.basePrice) || 0) + (Number(item.crustPrice) || 0) + (Number(item.addonsTotal) || 0)) * item.qty;
     });
   }
 
