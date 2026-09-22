@@ -56,7 +56,6 @@ function buildInvoiceMessage(order) {
     orderTypeMap[String(order?.orderType || '').toLowerCase()] ||
     (order?.orderType || 'Order');
 
-  // Invoice link (optional page). Agar invoice page nahi hai to bhi chalega.
   const invoiceLink = order?._id
     ? `${INVOICE_BASE_URL}/invoice.html?id=${order._id}`
     : `${INVOICE_BASE_URL}`;
@@ -101,88 +100,119 @@ Singhpur Chauraha, Bithoor Rd, Kalyanpur, Kanpur
 }
 
 /**
- * Powerstext sender
- * Common endpoint patterns try karta hai.
+ * Multi-Endpoint Fallback Sender for Powerstext PHP Panel
  */
 async function sendViaPowerstext(to91, message) {
-  const payloads = [
-    // Pattern A
+  // Common endpoints used by Indian WhatsApp PHP API Panels
+  const attempts = [
+    // 1. GET request to /api/send.php (Most Common for PHP Panels)
     {
-      url: `${POWERSTEXT_BASE_URL}/api/send`,
-      data: {
+      method: 'GET',
+      url: `${POWERSTEXT_BASE_URL}/api/send.php`,
+      params: {
         username: POWERSTEXT_USER,
         password: POWERSTEXT_PASS,
         number: to91,
-        message,
+        message: message,
       },
     },
-    // Pattern B
+    // 2. GET request to /api/send-message.php
     {
-      url: `${POWERSTEXT_BASE_URL}/api/sendText`,
-      data: {
-        user: POWERSTEXT_USER,
-        pass: POWERSTEXT_PASS,
-        to: to91,
-        msg: message,
-      },
-    },
-    // Pattern C (query style some panels use)
-    {
-      url: `${POWERSTEXT_BASE_URL}/api/send`,
-      data: null,
+      method: 'GET',
+      url: `${POWERSTEXT_BASE_URL}/api/send-message.php`,
       params: {
         username: POWERSTEXT_USER,
         password: POWERSTEXT_PASS,
         to: to91,
-        message,
+        message: message,
       },
     },
+    // 3. GET request to /api/send
+    {
+      method: 'GET',
+      url: `${POWERSTEXT_BASE_URL}/api/send`,
+      params: {
+        username: POWERSTEXT_USER,
+        password: POWERSTEXT_PASS,
+        number: to91,
+        message: message,
+      },
+    },
+    // 4. POST Form-Urlencoded to /api/send.php
+    {
+      method: 'POST',
+      url: `${POWERSTEXT_BASE_URL}/api/send.php`,
+      data: new URLSearchParams({
+        username: POWERSTEXT_USER,
+        password: POWERSTEXT_PASS,
+        number: to91,
+        message: message,
+      }).toString(),
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    },
+    // 5. GET request to /send_message
+    {
+      method: 'GET',
+      url: `${POWERSTEXT_BASE_URL}/send_message`,
+      params: {
+        user: POWERSTEXT_USER,
+        pass: POWERSTEXT_PASS,
+        phone: to91,
+        text: message,
+      },
+    }
   ];
 
   let lastError = null;
 
-  for (const item of payloads) {
+  for (const config of attempts) {
     try {
       const res = await axios({
-        method: 'POST',
-        url: item.url,
-        data: item.data || undefined,
-        params: item.params || undefined,
-        timeout: 15000,
-        headers: { 'Content-Type': 'application/json' },
+        method: config.method,
+        url: config.url,
+        params: config.params || undefined,
+        data: config.data || undefined,
+        headers: config.headers || undefined,
+        timeout: 12000,
         validateStatus: () => true,
       });
 
-      // success heuristics
-      const ok =
-        res.status >= 200 &&
-        res.status < 300 &&
-        (res.data?.success === true ||
-          res.data?.status === 'success' ||
-          res.data?.status === true ||
-          String(res.data?.message || '').toLowerCase().includes('success') ||
-          typeof res.data === 'string' && res.data.toLowerCase().includes('success') ||
-          res.status === 200);
-
-      if (ok) {
-        return { ok: true, providerResponse: res.data, status: res.status };
+      // Ignore 404s and try next endpoint in loop
+      if (res.status === 404) {
+        continue;
       }
 
-      lastError = new Error(
-        `Powerstext failed (${res.status}): ${JSON.stringify(res.data)}`
-      );
+      const responseText = typeof res.data === 'object' ? JSON.stringify(res.data) : String(res.data);
+
+      const isSuccess =
+        res.status >= 200 &&
+        res.status < 300 &&
+        !responseText.includes('404 Not Found') &&
+        (
+          res.data?.status === 'success' ||
+          res.data?.status === true ||
+          res.data?.success === true ||
+          responseText.toLowerCase().includes('sent') ||
+          responseText.toLowerCase().includes('success') ||
+          responseText.includes('200')
+        );
+
+      if (isSuccess || (res.status >= 200 && res.status < 300)) {
+        console.log(`✅ Powerstext Success via ${config.url} | Status: ${res.status}`);
+        return { ok: true, response: res.data };
+      } else {
+        lastError = new Error(`Powerstext response (${res.status}): ${responseText.slice(0, 150)}`);
+      }
     } catch (err) {
       lastError = err;
     }
   }
 
-  throw lastError || new Error('Powerstext send failed');
+  throw lastError || new Error('All Powerstext endpoints returned 404/Error');
 }
 
 /**
- * Main function used by order controller
- * @param {string} phone
- * @param {object} order
+ * Main function called by Order Controller
  */
 async function sendDirectWhatsAppMessage(phone, order) {
   try {
@@ -192,7 +222,6 @@ async function sendDirectWhatsAppMessage(phone, order) {
       return { skipped: true, reason: 'invalid_phone' };
     }
 
-    // pending table open pe mat bhejo
     if (String(order?.paymentMethod || '').toLowerCase() === 'pending') {
       console.log('⚠️ WhatsApp skipped: pending payment order');
       return { skipped: true, reason: 'pending_payment' };
@@ -201,11 +230,10 @@ async function sendDirectWhatsAppMessage(phone, order) {
     const message = buildInvoiceMessage(order);
     const result = await sendViaPowerstext(to91, message);
 
-    console.log(`✅ WhatsApp invoice sent to ${to91} | Bill: ${order?.orderNumber}`);
+    console.log(`✅ WhatsApp Invoice Sent -> ${to91} | Order: ${order?.orderNumber}`);
     return result;
   } catch (err) {
-    // Order create fail na ho isliye error swallow + log
-    console.error('❌ WhatsApp send error:', err.message);
+    console.error('❌ WhatsApp Send Error:', err.message);
     return { ok: false, error: err.message };
   }
 }
