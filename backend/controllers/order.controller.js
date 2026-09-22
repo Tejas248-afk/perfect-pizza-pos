@@ -40,6 +40,8 @@ const createOrder = async (req, res) => {
       status
     } = req.body;
 
+    const branchId = branch || req.user?.branch?._id || req.user?.branch;
+
     // 1. Order Number Generation
     const count = await Order.countDocuments().catch(() => 0);
     const orderNumber = `ORD-${101 + count}`;
@@ -66,7 +68,7 @@ const createOrder = async (req, res) => {
         ]
       });
 
-      // Deduct Used Coins immediately (so customer can't reuse them)
+      // Deduct Used Coins immediately
       let coinsToRedeem = safeNum(rewardCoinsUsed);
       if (customer && coinsToRedeem > 0) {
         let currentBalance = safeNum(customer.rewardCoins);
@@ -79,6 +81,7 @@ const createOrder = async (req, res) => {
       if (!customer) {
         try {
           customer = await Customer.create({
+            branch: branchId,
             phone: cleanPhone,
             name: (customerName && customerName.toLowerCase() !== 'guest') ? customerName : 'Guest',
             address: finalAddress,
@@ -91,6 +94,7 @@ const createOrder = async (req, res) => {
         }
       } else {
         customer.phone = cleanPhone;
+        if (branchId && !customer.branch) customer.branch = branchId;
         if (customerName && customerName.toLowerCase() !== 'guest') customer.name = customerName;
         if (finalAddress) customer.address = finalAddress;
       }
@@ -104,7 +108,8 @@ const createOrder = async (req, res) => {
       }
 
       if (customer) {
-        await customer.save().catch(err => console.error("Customer save error:", err.message));
+        if (branchId && !customer.branch) customer.branch = branchId;
+        await customer.save().catch(err => console.error("⚠️ Customer save warning:", err.message));
         customerObj = { id: customer._id, _id: customer._id, name: customer.name, phone: cleanPhone };
       }
     }
@@ -113,7 +118,7 @@ const createOrder = async (req, res) => {
       ? String(orderType).toLowerCase() : 'dine-in';
 
     const newOrder = new Order({
-      branch: branch || null,
+      branch: branchId || null,
       orderNumber,
       orderType: safeOrderType,
       customer: customerObj,
@@ -152,13 +157,15 @@ const createOrder = async (req, res) => {
   }
 };
 
-// @desc    Lookup customer by phone (AUTO RECOVERY & ACCURATE COINS SYNC)
+// @desc    Lookup customer by phone
 // @route   GET /api/orders/customer/:phone
 // @access  Private
 const lookupCustomer = async (req, res) => {
   try {
     const cleanPhone = get10DigitPhone(req.params.phone);
     if (cleanPhone.length < 10) return res.status(400).json({ found: false, message: 'Valid 10-digit phone required' });
+
+    const branchId = req.user?.branch?._id || req.user?.branch;
 
     // 1. Search Customer Profile
     let customer = await Customer.findOne({
@@ -193,16 +200,16 @@ const lookupCustomer = async (req, res) => {
       if (n && n.toLowerCase() !== 'guest' && !realName) realName = n;
     });
 
-    // Completed Orders (Only these earn coins and count in total orders/spent)
+    // Completed Orders
     const completedOrders = allOrders.filter(o => String(o.status || '').toLowerCase() === 'completed');
     
-    // Non-Cancelled Orders (Used coins deduction applies to any active order)
+    // Non-Cancelled Orders
     const nonCancelledOrders = allOrders.filter(o => !['cancelled', 'canceled', 'cancel', 'rejected'].includes(String(o.status || '').toLowerCase()));
 
     const computedOrders = completedOrders.length;
     const computedSpent = completedOrders.reduce((sum, o) => sum + safeNum(o.grandTotal), 0);
 
-    // Coins Calculation: Earned from Completed Orders - Used in Non-Cancelled Orders
+    // Coins Calculation
     const earnedCoins = completedOrders.reduce((sum, o) => {
       return sum + (o.rewardCoinsEarned != null ? safeNum(o.rewardCoinsEarned) : calculateEarnedCoins(o.grandTotal));
     }, 0);
@@ -216,6 +223,7 @@ const lookupCustomer = async (req, res) => {
       
       try {
         customer = await Customer.create({
+          branch: branchId,
           phone: cleanPhone,
           name: realName || 'Guest',
           rewardCoins: computedCoins,
@@ -227,6 +235,7 @@ const lookupCustomer = async (req, res) => {
       }
     } else {
       customer.phone = cleanPhone;
+      if (branchId && !customer.branch) customer.branch = branchId;
       customer.rewardCoins = computedCoins;
       customer.totalOrders = computedOrders;
       customer.totalSpent = computedSpent;
@@ -284,7 +293,7 @@ const getOrderById = async (req, res) => {
   }
 };
 
-// @desc    Update Status & Award Coins ON COMPLETION ONLY (Dine-in, Takeaway, Delivery)
+// @desc    Update Status & Award Coins (FAIL-SAFE)
 const updateOrderStatus = async (req, res) => {
   try {
     const { status, paymentMethod } = req.body;
@@ -298,53 +307,63 @@ const updateOrderStatus = async (req, res) => {
     if (newStatus === 'completed') order.completedAt = new Date();
 
     const cleanPhone = get10DigitPhone(order.customer?.phone || order.customerPhone);
+    const branchId = order.branch || req.user?.branch?._id || req.user?.branch;
 
-    // 🪙 AWARD COINS WHEN ORDER BECOMES COMPLETED (ALL TYPES: Dine-in, Delivery, Takeaway)
+    // 🪙 AWARD COINS WHEN ORDER BECOMES COMPLETED (ALL TYPES)
     if (newStatus === 'completed' && !order.coinsAwarded && cleanPhone.length === 10) {
       const earned = order.rewardCoinsEarned != null ? safeNum(order.rewardCoinsEarned) : calculateEarnedCoins(order.grandTotal);
       order.rewardCoinsEarned = earned;
       order.coinsAwarded = true;
 
-      const cust = await Customer.findOne({
-        $or: [
-          { phone: cleanPhone },
-          { phone: { $regex: cleanPhone + '$', $options: 'i' } }
-        ]
-      });
+      try {
+        const cust = await Customer.findOne({
+          $or: [
+            { phone: cleanPhone },
+            { phone: { $regex: cleanPhone + '$', $options: 'i' } }
+          ]
+        });
 
-      if (cust) {
-        cust.rewardCoins = safeNum(cust.rewardCoins) + earned;
-        cust.totalOrders = safeNum(cust.totalOrders) + 1;
-        cust.totalSpent = safeNum(cust.totalSpent) + safeNum(order.grandTotal);
-        await cust.save();
-        console.log(`🪙 COINS AWARDED ON COMPLETION | Phone: ${cleanPhone} | +${earned} Coins | Total: ${cust.rewardCoins}`);
+        if (cust) {
+          if (branchId && !cust.branch) cust.branch = branchId; // 🔥 Fix missing branch error
+          cust.rewardCoins = safeNum(cust.rewardCoins) + earned;
+          cust.totalOrders = safeNum(cust.totalOrders) + 1;
+          cust.totalSpent = safeNum(cust.totalSpent) + safeNum(order.grandTotal);
+          await cust.save();
+          console.log(`🪙 COINS AWARDED | Phone: ${cleanPhone} | +${earned} Coins | Total: ${cust.rewardCoins}`);
+        }
+      } catch (custErr) {
+        console.error("⚠️ Customer coins update error (non-blocking):", custErr.message);
       }
     }
 
     // 🔴 IF ORDER CANCELLED: Revert awarded coins & refund used coins
     if (['cancelled', 'canceled', 'rejected'].includes(newStatus)) {
-      const cust = await Customer.findOne({
-        $or: [
-          { phone: cleanPhone },
-          { phone: { $regex: cleanPhone + '$', $options: 'i' } }
-        ]
-      });
+      try {
+        const cust = await Customer.findOne({
+          $or: [
+            { phone: cleanPhone },
+            { phone: { $regex: cleanPhone + '$', $options: 'i' } }
+          ]
+        });
 
-      if (cust) {
-        // Revert earned coins if they were awarded
-        if (order.coinsAwarded) {
-          cust.rewardCoins = Math.max(0, safeNum(cust.rewardCoins) - safeNum(order.rewardCoinsEarned));
-          cust.totalOrders = Math.max(0, safeNum(cust.totalOrders) - 1);
-          cust.totalSpent = Math.max(0, safeNum(cust.totalSpent) - safeNum(order.grandTotal));
-          order.coinsAwarded = false;
+        if (cust) {
+          if (branchId && !cust.branch) cust.branch = branchId; // 🔥 Fix missing branch error
+          
+          if (order.coinsAwarded) {
+            cust.rewardCoins = Math.max(0, safeNum(cust.rewardCoins) - safeNum(order.rewardCoinsEarned));
+            cust.totalOrders = Math.max(0, safeNum(cust.totalOrders) - 1);
+            cust.totalSpent = Math.max(0, safeNum(cust.totalSpent) - safeNum(order.grandTotal));
+            order.coinsAwarded = false;
+          }
+
+          if (safeNum(order.rewardCoinsUsed) > 0) {
+            cust.rewardCoins = safeNum(cust.rewardCoins) + safeNum(order.rewardCoinsUsed);
+          }
+
+          await cust.save();
         }
-
-        // Refund redeemed coins back to customer
-        if (safeNum(order.rewardCoinsUsed) > 0) {
-          cust.rewardCoins = safeNum(cust.rewardCoins) + safeNum(order.rewardCoinsUsed);
-        }
-
-        await cust.save();
+      } catch (custErr) {
+        console.error("⚠️ Customer cancel refund error (non-blocking):", custErr.message);
       }
     }
 
@@ -354,6 +373,7 @@ const updateOrderStatus = async (req, res) => {
 
     res.json({ success: true, order });
   } catch (err) {
+    console.error("Update status error:", err);
     res.status(500).json({ message: err.message });
   }
 };
@@ -369,7 +389,6 @@ const addKotItems = async (req, res) => {
     order.subtotal = safeNum(order.subtotal) + safeNum(subtotal);
     order.grandTotal = safeNum(order.grandTotal) + safeNum(grandTotal);
     
-    // Recalculate coins earned for the new grand total
     order.rewardCoinsEarned = calculateEarnedCoins(order.grandTotal);
 
     await order.save();
