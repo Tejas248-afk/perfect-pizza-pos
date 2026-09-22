@@ -1,8 +1,8 @@
 const axios = require('axios');
 
 const POWERSTEXT_ENDPOINT = 'http://wapp.powerstext.in/http-tokenkeyapi.php';
-const AUTHENTIC_KEY = process.env.POWERSTEXT_AUTH_KEY || '35315065726665637450697a7a615748415450503130301765611474';
-const ROUTE_ID = process.env.POWERSTEXT_ROUTE || '1';
+const AUTHENTIC_KEY = '35315065726665637450697a7a615748415450503130301765611474';
+const ROUTE_ID = '1';
 const INVOICE_BASE_URL = (process.env.INVOICE_BASE_URL || 'https://pizzapos.netlify.app').replace(/\/$/, '');
 
 // 10 digit -> 91XXXXXXXXXX
@@ -17,48 +17,28 @@ function toWhatsAppNumber(phone) {
 function formatDateTime(dateInput) {
   const d = new Date(dateInput || Date.now());
   const date = d.toLocaleDateString('en-IN', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
+    day: '2-digit', month: 'short', year: 'numeric',
     timeZone: 'Asia/Kolkata',
   });
   const time = d.toLocaleTimeString('en-IN', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
+    hour: '2-digit', minute: '2-digit', hour12: true,
     timeZone: 'Asia/Kolkata',
   });
   return { date, time };
 }
 
 function buildInvoiceMessage(order) {
-  const name =
-    order?.customer?.name && order.customer.name !== 'Guest'
-      ? order.customer.name
-      : 'Customer';
-
+  const name = order?.customer?.name && order.customer.name !== 'Guest' ? order.customer.name : 'Customer';
   const billNo = order?.orderNumber || 'ORD-TEST';
   const amount = Number(order?.grandTotal || 0);
-  const paidAmount =
-    String(order?.paymentMethod || '').toLowerCase() === 'pending'
-      ? 0
-      : amount;
-
+  const paidAmount = String(order?.paymentMethod || '').toLowerCase() === 'pending' ? 0 : amount;
   const rewardPoints = Number(order?.rewardCoinsEarned || 0);
   const { date, time } = formatDateTime(order?.createdAt);
 
-  const orderTypeMap = {
-    delivery: 'Home Delivery',
-    takeaway: 'Takeaway',
-    'dine-in': 'Dine-in',
-  };
-  const orderType =
-    orderTypeMap[String(order?.orderType || '').toLowerCase()] ||
-    (order?.orderType || 'Order');
+  const orderTypeMap = { delivery: 'Home Delivery', takeaway: 'Takeaway', 'dine-in': 'Dine-in' };
+  const orderType = orderTypeMap[String(order?.orderType || '').toLowerCase()] || (order?.orderType || 'Order');
 
-  const invoiceLink = order?._id
-    ? `${INVOICE_BASE_URL}/invoice.html?id=${order._id}`
-    : `${INVOICE_BASE_URL}`;
+  const invoiceLink = order?._id ? `${INVOICE_BASE_URL}/invoice.html?id=${order._id}` : `${INVOICE_BASE_URL}`;
 
   return (
 `🙏 Thank You for Ordering from *Perfect Pizza!* 🍕
@@ -103,63 +83,52 @@ Singhpur Chauraha, Bithoor Rd, Kalyanpur, Kanpur
  * Direct Powerstext TokenKey API Sender
  */
 async function sendViaPowerstext(to91, message) {
-  // Param combinations for tokenkeyapi.php
-  const paramVariations = [
-    { 'authentic-key': AUTHENTIC_KEY, route: ROUTE_ID, number: to91, message: message },
-    { 'authentic-key': AUTHENTIC_KEY, route: ROUTE_ID, to: to91, message: message },
-    { 'authentic-key': AUTHENTIC_KEY, route: ROUTE_ID, mobile: to91, msg: message },
-    { 'authentic-key': AUTHENTIC_KEY, route: ROUTE_ID, phone: to91, message: message }
-  ];
+  try {
+    // Strict parameters according to Powerstext Token API Documentation
+    const params = {
+      'authentic-key': AUTHENTIC_KEY,
+      'route': ROUTE_ID,
+      'number': to91,
+      'message': message
+    };
 
-  let lastError = null;
+    const res = await axios.get(POWERSTEXT_ENDPOINT, { 
+      params,
+      timeout: 15000,
+      validateStatus: () => true 
+    });
 
-  for (const params of paramVariations) {
-    try {
-      const res = await axios.get(POWERSTEXT_ENDPOINT, {
-        params: params,
-        timeout: 10000,
-        validateStatus: () => true
-      });
+    const resData = res.data;
+    console.log(`📡 WA API Response -> Status: ${res.status} | Body:`, JSON.stringify(resData));
 
-      const resStr = typeof res.data === 'object' ? JSON.stringify(res.data) : String(res.data || '');
-      console.log(`📡 Powerstext TokenKey API Response -> Status: ${res.status} | Res: ${resStr}`);
-
-      if (res.status >= 200 && res.status < 300) {
-        return { ok: true, response: res.data };
-      } else {
-        lastError = new Error(`HTTP ${res.status}: ${resStr}`);
-      }
-    } catch (err) {
-      lastError = err;
+    // Powerstext specific success check
+    if (res.status === 200 && (resData.Status === 'Success' || resData.status === 'success')) {
+      return { ok: true, response: resData };
+    } else {
+      // Return false if API rejected the request even with HTTP 200
+      return { ok: false, error: resData.Description || 'API Authentication Failed', response: resData };
     }
+  } catch (err) {
+    console.error('❌ WA API Connection Error:', err.message);
+    return { ok: false, error: err.message };
   }
-
-  throw lastError || new Error('Powerstext TokenKey API call failed');
 }
 
-/**
- * Main Function Called by Controller / Test Route
- */
 async function sendDirectWhatsAppMessage(phone, order) {
   try {
     const to91 = toWhatsAppNumber(phone);
-    if (!to91) {
-      console.log('⚠️ WhatsApp skipped: invalid phone', phone);
-      return { ok: false, reason: 'invalid_phone' };
-    }
-
-    if (String(order?.paymentMethod || '').toLowerCase() === 'pending') {
-      console.log('⚠️ WhatsApp skipped: pending payment order');
-      return { ok: false, reason: 'pending_payment' };
-    }
+    if (!to91) return { ok: false, error: 'invalid_phone' };
 
     const message = buildInvoiceMessage(order);
-    console.log(`📲 Sending WA Message via TokenKey API to ${to91}...`);
     const result = await sendViaPowerstext(to91, message);
 
+    if (result.ok) {
+      console.log(`✅ WhatsApp Sent to ${to91}`);
+    } else {
+      console.log(`❌ WhatsApp Failed for ${to91}: ${result.error}`);
+    }
     return result;
   } catch (err) {
-    console.error('❌ WhatsApp Send Error:', err.message);
     return { ok: false, error: err.message };
   }
 }
