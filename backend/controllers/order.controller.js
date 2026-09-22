@@ -15,6 +15,20 @@ const get10DigitPhone = (p) => String(p || '').replace(/\D/g, '').slice(-10);
 // Rule: ₹20 spent = 1 Coin
 const calculateEarnedCoins = (amount) => Math.floor(safeNum(amount) / 20);
 
+// Fire-and-forget WhatsApp (order response slow nahi hoga)
+function queueWhatsAppInvoice(phone, order) {
+  const clean = get10DigitPhone(phone);
+  if (!clean || clean.length !== 10) {
+    console.log('⚠️ WhatsApp skipped: invalid phone');
+    return;
+  }
+  setImmediate(() => {
+    sendDirectWhatsAppMessage(clean, order).catch((err) => {
+      console.error('❌ WhatsApp queue error:', err.message);
+    });
+  });
+}
+
 // @desc    Create new order
 // @route   POST /api/orders
 // @access  Private
@@ -49,7 +63,8 @@ const createOrder = async (req, res) => {
     const safeGrandTotal = safeNum(grandTotal);
     const payMethod = String(paymentMethod || 'cash').toLowerCase().trim();
     const initialStatus = String(status || 'new').toLowerCase().trim();
-    
+    const type = String(orderType || 'dine-in').toLowerCase().trim();
+
     let cleanPhone = get10DigitPhone(customerPhone);
     if (cleanPhone.length !== 10) cleanPhone = 'N/A';
 
@@ -101,9 +116,11 @@ const createOrder = async (req, res) => {
 
       // If order is placed directly as "completed"
       if (initialStatus === 'completed') {
-        customer.rewardCoins = safeNum(customer.rewardCoins) + rewardCoinsEarned;
-        customer.totalOrders = safeNum(customer.totalOrders) + 1;
-        customer.totalSpent = safeNum(customer.totalSpent) + safeGrandTotal;
+        if (customer) {
+          customer.rewardCoins = safeNum(customer.rewardCoins) + rewardCoinsEarned;
+          customer.totalOrders = safeNum(customer.totalOrders) + 1;
+          customer.totalSpent = safeNum(customer.totalSpent) + safeGrandTotal;
+        }
         coinsAwarded = true;
       }
 
@@ -114,8 +131,9 @@ const createOrder = async (req, res) => {
       }
     }
 
-    const safeOrderType = ['delivery', 'takeaway', 'dine-in'].includes(String(orderType).toLowerCase()) 
-      ? String(orderType).toLowerCase() : 'dine-in';
+    const safeOrderType = ['delivery', 'takeaway', 'dine-in'].includes(type)
+      ? type
+      : 'dine-in';
 
     const newOrder = new Order({
       branch: branchId || null,
@@ -142,9 +160,21 @@ const createOrder = async (req, res) => {
 
     await newOrder.save();
 
-    // Direct WhatsApp Notification
-    if (cleanPhone !== 'N/A' && payMethod !== 'pending') {
-      sendDirectWhatsAppMessage(cleanPhone, newOrder);
+    // =========================================================
+    // 🔥 WHATSAPP INVOICE
+    // Delivery / Takeaway / Dine-in (paid) => turant bhejo
+    // Dine-in table start (pending) => yahan mat bhejo (complete pe jayega)
+    // =========================================================
+    const shouldSendNow =
+      cleanPhone !== 'N/A' &&
+      payMethod !== 'pending' &&
+      initialStatus !== 'cancelled';
+
+    if (shouldSendNow) {
+      console.log(`📲 Queuing WhatsApp invoice for ${cleanPhone} | ${orderNumber} | ${safeOrderType}`);
+      queueWhatsAppInvoice(cleanPhone, newOrder);
+    } else {
+      console.log(`⚠️ WhatsApp skipped on create | phone=${cleanPhone} | pay=${payMethod} | type=${safeOrderType}`);
     }
 
     const io = req.app.get('io');
@@ -163,11 +193,12 @@ const createOrder = async (req, res) => {
 const lookupCustomer = async (req, res) => {
   try {
     const cleanPhone = get10DigitPhone(req.params.phone);
-    if (cleanPhone.length < 10) return res.status(400).json({ found: false, message: 'Valid 10-digit phone required' });
+    if (cleanPhone.length < 10) {
+      return res.status(400).json({ found: false, message: 'Valid 10-digit phone required' });
+    }
 
     const branchId = req.user?.branch?._id || req.user?.branch;
 
-    // 1. Search Customer Profile
     let customer = await Customer.findOne({
       $or: [
         { phone: cleanPhone },
@@ -175,7 +206,6 @@ const lookupCustomer = async (req, res) => {
       ]
     });
 
-    // 2. Search ALL Orders in History
     const orderOrConditions = [
       { 'customer.phone': cleanPhone },
       { 'customerPhone': cleanPhone },
@@ -193,23 +223,18 @@ const lookupCustomer = async (req, res) => {
 
     const allOrders = await Order.find({ $or: orderOrConditions }).sort({ createdAt: -1 }).lean();
 
-    // Extract real name
     let realName = '';
     allOrders.forEach(o => {
       const n = o.customer?.name || o.customerName || '';
       if (n && n.toLowerCase() !== 'guest' && !realName) realName = n;
     });
 
-    // Completed Orders
     const completedOrders = allOrders.filter(o => String(o.status || '').toLowerCase() === 'completed');
-    
-    // Non-Cancelled Orders
     const nonCancelledOrders = allOrders.filter(o => !['cancelled', 'canceled', 'cancel', 'rejected'].includes(String(o.status || '').toLowerCase()));
 
     const computedOrders = completedOrders.length;
     const computedSpent = completedOrders.reduce((sum, o) => sum + safeNum(o.grandTotal), 0);
 
-    // Coins Calculation
     const earnedCoins = completedOrders.reduce((sum, o) => {
       return sum + (o.rewardCoinsEarned != null ? safeNum(o.rewardCoinsEarned) : calculateEarnedCoins(o.grandTotal));
     }, 0);
@@ -217,10 +242,9 @@ const lookupCustomer = async (req, res) => {
     const usedCoins = nonCancelledOrders.reduce((sum, o) => sum + safeNum(o.rewardCoinsUsed), 0);
     const computedCoins = Math.max(0, earnedCoins - usedCoins);
 
-    // AUTO-RECOVERY & SYNC
     if (!customer) {
       if (allOrders.length === 0) return res.json({ found: false });
-      
+
       try {
         customer = await Customer.create({
           branch: branchId,
@@ -271,7 +295,8 @@ const getOrders = async (req, res) => {
     let query = {};
     if (status) query.status = status;
     if (today === 'true') {
-      const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
       query.createdAt = { $gte: startOfDay };
     }
     const orders = await Order.find(query).sort({ createdAt: -1 });
@@ -284,7 +309,9 @@ const getOrders = async (req, res) => {
 // @desc    Get Single Order
 const getOrderById = async (req, res) => {
   try {
-    if (!req.params.id || req.params.id.length !== 24) return res.status(400).json({ message: 'Invalid ID' });
+    if (!req.params.id || req.params.id.length !== 24) {
+      return res.status(400).json({ message: 'Invalid ID' });
+    }
     const order = await Order.findById(req.params.id);
     if (!order) return res.status(404).json({ message: 'Order not found' });
     res.json(order);
@@ -293,17 +320,24 @@ const getOrderById = async (req, res) => {
   }
 };
 
-// @desc    Update Status & Award Coins (FAIL-SAFE)
+// @desc    Update Status & Award Coins + WhatsApp on Complete (Dine-in included)
 const updateOrderStatus = async (req, res) => {
   try {
     const { status, paymentMethod } = req.body;
     const order = await Order.findById(req.params.id);
     if (!order) return res.status(404).json({ message: 'Order not found' });
 
+    const oldStatus = String(order.status || '').toLowerCase().trim();
     const newStatus = String(status || '').toLowerCase().trim();
+    const oldPay = String(order.paymentMethod || '').toLowerCase().trim();
 
     order.status = status;
-    if (paymentMethod) order.paymentMethod = paymentMethod;
+    if (paymentMethod) {
+      order.paymentMethod = paymentMethod;
+      if (String(paymentMethod).toLowerCase() !== 'pending') {
+        order.paymentStatus = 'paid';
+      }
+    }
     if (newStatus === 'completed') order.completedAt = new Date();
 
     const cleanPhone = get10DigitPhone(order.customer?.phone || order.customerPhone);
@@ -311,7 +345,10 @@ const updateOrderStatus = async (req, res) => {
 
     // 🪙 AWARD COINS WHEN ORDER BECOMES COMPLETED (ALL TYPES)
     if (newStatus === 'completed' && !order.coinsAwarded && cleanPhone.length === 10) {
-      const earned = order.rewardCoinsEarned != null ? safeNum(order.rewardCoinsEarned) : calculateEarnedCoins(order.grandTotal);
+      const earned = order.rewardCoinsEarned != null
+        ? safeNum(order.rewardCoinsEarned)
+        : calculateEarnedCoins(order.grandTotal);
+
       order.rewardCoinsEarned = earned;
       order.coinsAwarded = true;
 
@@ -324,19 +361,19 @@ const updateOrderStatus = async (req, res) => {
         });
 
         if (cust) {
-          if (branchId && !cust.branch) cust.branch = branchId; // 🔥 Fix missing branch error
+          if (branchId && !cust.branch) cust.branch = branchId;
           cust.rewardCoins = safeNum(cust.rewardCoins) + earned;
           cust.totalOrders = safeNum(cust.totalOrders) + 1;
           cust.totalSpent = safeNum(cust.totalSpent) + safeNum(order.grandTotal);
           await cust.save();
-          console.log(`🪙 COINS AWARDED | Phone: ${cleanPhone} | +${earned} Coins | Total: ${cust.rewardCoins}`);
+          console.log(`🪙 COINS AWARDED | Phone: ${cleanPhone} | +${earned} | Total: ${cust.rewardCoins}`);
         }
       } catch (custErr) {
         console.error("⚠️ Customer coins update error (non-blocking):", custErr.message);
       }
     }
 
-    // 🔴 IF ORDER CANCELLED: Revert awarded coins & refund used coins
+    // 🔴 CANCEL: revert coins + refund used
     if (['cancelled', 'canceled', 'rejected'].includes(newStatus)) {
       try {
         const cust = await Customer.findOne({
@@ -347,8 +384,8 @@ const updateOrderStatus = async (req, res) => {
         });
 
         if (cust) {
-          if (branchId && !cust.branch) cust.branch = branchId; // 🔥 Fix missing branch error
-          
+          if (branchId && !cust.branch) cust.branch = branchId;
+
           if (order.coinsAwarded) {
             cust.rewardCoins = Math.max(0, safeNum(cust.rewardCoins) - safeNum(order.rewardCoinsEarned));
             cust.totalOrders = Math.max(0, safeNum(cust.totalOrders) - 1);
@@ -368,6 +405,22 @@ const updateOrderStatus = async (req, res) => {
     }
 
     await order.save();
+
+    // =========================================================
+    // 🔥 DINE-IN / ALL TYPES: WhatsApp invoice on COMPLETE
+    // (pending table start pe nahi, final complete pe haan)
+    // =========================================================
+    const becameCompleted = newStatus === 'completed' && oldStatus !== 'completed';
+    const becamePaidFromPending =
+      oldPay === 'pending' &&
+      paymentMethod &&
+      String(paymentMethod).toLowerCase() !== 'pending';
+
+    if (cleanPhone.length === 10 && (becameCompleted || becamePaidFromPending)) {
+      console.log(`📲 Queuing WhatsApp on status update | ${order.orderNumber} | ${order.orderType}`);
+      queueWhatsAppInvoice(cleanPhone, order);
+    }
+
     const io = req.app.get('io');
     if (io) io.emit('orderUpdated', order);
 
@@ -385,10 +438,9 @@ const addKotItems = async (req, res) => {
     const order = await Order.findById(req.params.id);
     if (!order) return res.status(404).json({ message: 'Order not found' });
 
-    order.items.push(...items);
+    order.items.push(...(items || []));
     order.subtotal = safeNum(order.subtotal) + safeNum(subtotal);
     order.grandTotal = safeNum(order.grandTotal) + safeNum(grandTotal);
-    
     order.rewardCoinsEarned = calculateEarnedCoins(order.grandTotal);
 
     await order.save();
@@ -410,10 +462,3 @@ module.exports = {
   updateOrderStatus,
   addKotItems
 };
-// 🔥 AUTO WHATSAPP INVOICE
-if (cleanPhone !== 'N/A' && String(payMethod).toLowerCase() !== 'pending') {
-  // fire-and-forget (order response delay na ho)
-  setImmediate(() => {
-    sendDirectWhatsAppMessage(cleanPhone, newOrder);
-  });
-}
