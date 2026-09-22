@@ -7,30 +7,32 @@ const {
   getOrders,
   getOrderById,
   updateOrderStatus,
-  addKotItems
+  addKotItems,
+  testWhatsApp
 } = require('../controllers/order.controller');
 
-// 🔴 VERY IMPORTANT: Specific routes MUST come before generic /:id routes!
+// 🔴 SPECIFIC ROUTES MUST COME BEFORE GENERIC /:id ROUTES!
 
-// 1. GET /api/orders/customer/:phone
+// 1. WhatsApp Test Route (Browser me direct kholne ke liye bina token ke)
+router.get('/test-whatsapp', testWhatsApp);
+
+// 2. Customer Lookup
 router.get('/customer/:phone', lookupCustomer);
 
-// 2. GET /api/orders
+// 3. Fetch All Orders
 router.get('/', getOrders);
 
-// 3. POST /api/orders
+// 4. Create Order
 router.post('/', createOrder);
 
-// 4. GET /api/orders/:id
+// 🔴 PARAMETER / ID ROUTES MUST COME LAST!
+// 5. Get Order By ID
 router.get('/:id', getOrderById);
 
-// 5. PATCH /api/orders/:id/status
+// 6. Update Status
 router.patch('/:id/status', updateOrderStatus);
 
-// 6. PATCH /api/orders/:id/add-items (For Dine-In KOT)
+// 7. Add KOT Items
 router.patch('/:id/add-items', addKotItems);
-
-// Add test route
-router.get('/test-whatsapp', testWhatsApp);
 
 module.exports = router;
