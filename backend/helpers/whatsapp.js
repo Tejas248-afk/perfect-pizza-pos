@@ -1,10 +1,9 @@
 const axios = require('axios');
 
-const POWERSTEXT_USER = process.env.POWERSTEXT_USER || 'PerfectPizzaWHATPP';
-const POWERSTEXT_PASS = process.env.POWERSTEXT_PASS || 'edf65';
+const POWERSTEXT_ENDPOINT = 'http://wapp.powerstext.in/http-tokenkeyapi.php';
+const AUTHENTIC_KEY = process.env.POWERSTEXT_AUTH_KEY || '35315065726665637450697a7a615748415450503130301765611474';
+const ROUTE_ID = process.env.POWERSTEXT_ROUTE || '1';
 const INVOICE_BASE_URL = (process.env.INVOICE_BASE_URL || 'https://pizzapos.netlify.app').replace(/\/$/, '');
-
-let WORKING_ENDPOINT_CACHE = null;
 
 // 10 digit -> 91XXXXXXXXXX
 function toWhatsAppNumber(phone) {
@@ -101,114 +100,41 @@ Singhpur Chauraha, Bithoor Rd, Kalyanpur, Kanpur
 }
 
 /**
- * Advanced Scanner for Powerstext Root PHP & API Endpoints
+ * Direct Powerstext TokenKey API Sender
  */
 async function sendViaPowerstext(to91, message) {
-  if (WORKING_ENDPOINT_CACHE) {
-    try {
-      const res = await axios({
-        method: WORKING_ENDPOINT_CACHE.method,
-        url: WORKING_ENDPOINT_CACHE.url,
-        params: WORKING_ENDPOINT_CACHE.params ? WORKING_ENDPOINT_CACHE.params(to91, message) : undefined,
-        data: WORKING_ENDPOINT_CACHE.data ? WORKING_ENDPOINT_CACHE.data(to91, message) : undefined,
-        timeout: 10000,
-        validateStatus: () => true
-      });
-      const resStr = typeof res.data === 'object' ? JSON.stringify(res.data) : String(res.data || '');
-      if (res.status >= 200 && res.status < 300 && !resStr.toLowerCase().includes('not found')) {
-        return { ok: true, response: res.data };
-      }
-    } catch (e) {
-      WORKING_ENDPOINT_CACHE = null;
-    }
-  }
-
-  const bases = ['https://wapp.powerstext.in', 'http://wapp.powerstext.in'];
-  
-  // Powerstext PHP Root & API Endpoints list
-  const endpoints = [
-    // 1. Root Level PHP Scripts (Most common in Powerstext/PHP Panels)
-    { path: '/sendtext.php', method: 'GET', params: (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: num, message: msg }) },
-    { path: '/sendtext.php', method: 'GET', params: (num, msg) => ({ user: POWERSTEXT_USER, pass: POWERSTEXT_PASS, to: num, message: msg }) },
-    { path: '/sendsms.php', method: 'GET', params: (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: num, message: msg }) },
-    { path: '/send_sms.php', method: 'GET', params: (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, mobile: num, message: msg }) },
-    { path: '/send.php', method: 'GET', params: (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: num, message: msg }) },
-    { path: '/send-message.php', method: 'GET', params: (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: num, message: msg }) },
-    { path: '/api.php', method: 'GET', params: (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: num, message: msg }) },
-    { path: '/whatsapp.php', method: 'GET', params: (num, msg) => ({ user: POWERSTEXT_USER, pass: POWERSTEXT_PASS, mobile: num, msg: msg }) },
-    
-    // 2. Dashed API Paths
-    { path: '/api/send-text', method: 'GET', params: (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: num, message: msg }) },
-    { path: '/api/send-message', method: 'GET', params: (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: num, message: msg }) },
-    { path: '/api/send-whatsapp', method: 'GET', params: (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: num, message: msg }) },
-    { path: '/api/send-sms', method: 'GET', params: (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: num, message: msg }) },
-    { path: '/api/send_sms.php', method: 'GET', params: (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, mobile: num, message: msg }) },
-    { path: '/api/sendsms.php', method: 'GET', params: (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: num, message: msg }) },
-
-    // 3. Direct Route paths
-    { path: '/send-message', method: 'GET', params: (num, msg) => ({ user: POWERSTEXT_USER, pass: POWERSTEXT_PASS, to: num, message: msg }) },
-    { path: '/send-text', method: 'GET', params: (num, msg) => ({ user: POWERSTEXT_USER, pass: POWERSTEXT_PASS, to: num, message: msg }) },
-
-    // 4. POST Form-Data Attempts
-    {
-      path: '/sendtext.php',
-      method: 'POST',
-      data: (num, msg) => new URLSearchParams({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: num, message: msg }).toString(),
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
-    },
-    {
-      path: '/api/send-text',
-      method: 'POST',
-      data: (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: num, message: msg }),
-      headers: { 'Content-Type': 'application/json' }
-    }
+  // Param combinations for tokenkeyapi.php
+  const paramVariations = [
+    { 'authentic-key': AUTHENTIC_KEY, route: ROUTE_ID, number: to91, message: message },
+    { 'authentic-key': AUTHENTIC_KEY, route: ROUTE_ID, to: to91, message: message },
+    { 'authentic-key': AUTHENTIC_KEY, route: ROUTE_ID, mobile: to91, msg: message },
+    { 'authentic-key': AUTHENTIC_KEY, route: ROUTE_ID, phone: to91, message: message }
   ];
 
   let lastError = null;
 
-  for (const base of bases) {
-    for (const ep of endpoints) {
-      const fullUrl = base + ep.path;
-      try {
-        const config = {
-          method: ep.method,
-          url: fullUrl,
-          timeout: 7000,
-          validateStatus: () => true
-        };
+  for (const params of paramVariations) {
+    try {
+      const res = await axios.get(POWERSTEXT_ENDPOINT, {
+        params: params,
+        timeout: 10000,
+        validateStatus: () => true
+      });
 
-        if (ep.params) config.params = ep.params(to91, message);
-        if (ep.data) config.data = typeof ep.data === 'function' ? ep.data(to91, message) : ep.data;
-        if (ep.headers) config.headers = ep.headers;
+      const resStr = typeof res.data === 'object' ? JSON.stringify(res.data) : String(res.data || '');
+      console.log(`📡 Powerstext TokenKey API Response -> Status: ${res.status} | Res: ${resStr}`);
 
-        const res = await axios(config);
-        const resStr = typeof res.data === 'object' ? JSON.stringify(res.data) : String(res.data || '');
-
-        // Log non-404 responses
-        if (res.status !== 404) {
-          console.log(`🌐 WA Attempt [${ep.method} ${fullUrl}] -> Status: ${res.status} | Res: ${resStr.slice(0, 120)}`);
-        }
-
-        const isSuccess =
-          res.status >= 200 &&
-          res.status < 300 &&
-          !resStr.toLowerCase().includes('404 not found') &&
-          !resStr.toLowerCase().includes('file not found');
-
-        if (isSuccess) {
-          console.log(`🎉 SUCCESS! Found Working Powerstext Endpoint: ${fullUrl}`);
-          WORKING_ENDPOINT_CACHE = { method: ep.method, url: fullUrl, params: ep.params, data: ep.data };
-          return { ok: true, response: res.data, url: fullUrl };
-        } else if (res.status !== 404) {
-          lastError = new Error(`HTTP ${res.status}: ${resStr.slice(0, 100)}`);
-        }
-      } catch (err) {
-        lastError = err;
+      if (res.status >= 200 && res.status < 300) {
+        return { ok: true, response: res.data };
+      } else {
+        lastError = new Error(`HTTP ${res.status}: ${resStr}`);
       }
+    } catch (err) {
+      lastError = err;
     }
   }
 
-  throw lastError || new Error('All Powerstext endpoints returned 404/Error');
+  throw lastError || new Error('Powerstext TokenKey API call failed');
 }
 
 /**
@@ -228,12 +154,12 @@ async function sendDirectWhatsAppMessage(phone, order) {
     }
 
     const message = buildInvoiceMessage(order);
-    console.log(`📲 Sending WA Message to ${to91}...`);
+    console.log(`📲 Sending WA Message via TokenKey API to ${to91}...`);
     const result = await sendViaPowerstext(to91, message);
 
     return result;
   } catch (err) {
-    console.error('❌ WhatsApp Send Final Error:', err.message);
+    console.error('❌ WhatsApp Send Error:', err.message);
     return { ok: false, error: err.message };
   }
 }
