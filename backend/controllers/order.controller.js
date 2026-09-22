@@ -454,11 +454,35 @@ const addKotItems = async (req, res) => {
   }
 };
 
+
+// Add this near the end of controllers/order.controller.js
+const testWhatsApp = async (req, res) => {
+  try {
+    const phone = req.query.phone || '9889229198';
+    const dummyOrder = {
+      orderNumber: 'ORD-TEST-101',
+      grandTotal: 350,
+      paymentMethod: 'cash',
+      orderType: 'delivery',
+      rewardCoinsEarned: 17,
+      createdAt: new Date(),
+      customer: { name: 'Test Customer' }
+    };
+
+    const result = await sendDirectWhatsAppMessage(phone, dummyOrder);
+    return res.json({ message: "WhatsApp Test Triggered", phone, result });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+};
+
+// Ensure testWhatsApp is exported in module.exports at the end of the file:
 module.exports = {
   createOrder,
   lookupCustomer,
   getOrders,
   getOrderById,
   updateOrderStatus,
-  addKotItems
+  addKotItems,
+  testWhatsApp // <-- ADD THIS
 };

@@ -4,7 +4,6 @@ const POWERSTEXT_USER = process.env.POWERSTEXT_USER || 'PerfectPizzaWHATPP';
 const POWERSTEXT_PASS = process.env.POWERSTEXT_PASS || 'edf65';
 const INVOICE_BASE_URL = (process.env.INVOICE_BASE_URL || 'https://pizzapos.netlify.app').replace(/\/$/, '');
 
-// Cache the working endpoint once discovered
 let WORKING_ENDPOINT_CACHE = null;
 
 // 10 digit -> 91XXXXXXXXXX
@@ -39,7 +38,7 @@ function buildInvoiceMessage(order) {
       ? order.customer.name
       : 'Customer';
 
-  const billNo = order?.orderNumber || '-';
+  const billNo = order?.orderNumber || 'ORD-TEST';
   const amount = Number(order?.grandTotal || 0);
   const paidAmount =
     String(order?.paymentMethod || '').toLowerCase() === 'pending'
@@ -102,16 +101,16 @@ Singhpur Chauraha, Bithoor Rd, Kalyanpur, Kanpur
 }
 
 /**
- * Smart Auto-Discovery WhatsApp Sender for Powerstext Panel
+ * Universal Powerstext Sender with Detailed Logging
  */
 async function sendViaPowerstext(to91, message) {
-  // If we already know the working endpoint, use it directly
   if (WORKING_ENDPOINT_CACHE) {
     try {
       const res = await axios({
         method: WORKING_ENDPOINT_CACHE.method,
         url: WORKING_ENDPOINT_CACHE.url,
-        params: WORKING_ENDPOINT_CACHE.getParams(to91, message),
+        params: WORKING_ENDPOINT_CACHE.params ? WORKING_ENDPOINT_CACHE.params(to91, message) : undefined,
+        data: WORKING_ENDPOINT_CACHE.data ? WORKING_ENDPOINT_CACHE.data(to91, message) : undefined,
         timeout: 10000,
         validateStatus: () => true
       });
@@ -119,99 +118,128 @@ async function sendViaPowerstext(to91, message) {
         return { ok: true, response: res.data };
       }
     } catch (e) {
-      console.log("⚠️ Cached endpoint failed, retrying auto-discovery...");
       WORKING_ENDPOINT_CACHE = null;
     }
   }
 
-  // List of all possible Powerstext PHP API Endpoints & Protocols
   const bases = ['http://wapp.powerstext.in', 'https://wapp.powerstext.in'];
-  const paths = [
-    '/api/sendtext.php',
-    '/api/send.php',
-    '/api/sendhttp.php',
-    '/api/send_message.php',
-    '/api/whatsapp.php',
-    '/api/sendtext',
-    '/api/send',
-    '/send-message'
-  ];
-
-  const paramTemplates = [
-    (num, msg) => ({ user: POWERSTEXT_USER, pass: POWERSTEXT_PASS, to: num, message: msg }),
-    (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: num, message: msg }),
-    (num, msg) => ({ user: POWERSTEXT_USER, pass: POWERSTEXT_PASS, mobile: num, message: msg }),
-    (num, msg) => ({ user: POWERSTEXT_USER, pass: POWERSTEXT_PASS, mobiles: num, message: msg }),
-    (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, to: num, message: msg })
-  ];
-
-  let candidates = [];
-  for (const base of bases) {
-    for (const path of paths) {
-      for (const getParams of paramTemplates) {
-        candidates.push({ method: 'GET', url: base + path, getParams });
-      }
+  
+  // All known Indian WhatsApp PHP Panel Endpoints
+  const endpoints = [
+    {
+      path: '/api/sendtext.php',
+      method: 'GET',
+      params: (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: num, message: msg })
+    },
+    {
+      path: '/api/sendtext.php',
+      method: 'GET',
+      params: (num, msg) => ({ user: POWERSTEXT_USER, pass: POWERSTEXT_PASS, to: num, message: msg })
+    },
+    {
+      path: '/api/send.php',
+      method: 'GET',
+      params: (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: num, message: msg })
+    },
+    {
+      path: '/api/send.php',
+      method: 'GET',
+      params: (num, msg) => ({ user: POWERSTEXT_USER, pass: POWERSTEXT_PASS, to: num, msg: msg })
+    },
+    {
+      path: '/api/sendtext',
+      method: 'GET',
+      params: (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: num, message: msg })
+    },
+    {
+      path: '/api/send',
+      method: 'GET',
+      params: (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: num, message: msg })
+    },
+    {
+      path: '/send_message.php',
+      method: 'GET',
+      params: (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: num, message: msg })
+    },
+    {
+      path: '/send_message',
+      method: 'GET',
+      params: (num, msg) => ({ user: POWERSTEXT_USER, pass: POWERSTEXT_PASS, phone: num, text: msg })
+    },
+    {
+      path: '/api/v1/send',
+      method: 'POST',
+      data: (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: num, message: msg })
+    },
+    {
+      path: '/api/sendtext.php',
+      method: 'POST',
+      data: (num, msg) => new URLSearchParams({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: num, message: msg }).toString(),
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
     }
-  }
+  ];
 
   let lastError = null;
 
-  for (const candidate of candidates) {
-    const queryParams = candidate.getParams(to91, message);
-    try {
-      const res = await axios({
-        method: candidate.method,
-        url: candidate.url,
-        params: queryParams,
-        timeout: 8000,
-        validateStatus: () => true
-      });
+  for (const base of bases) {
+    for (const ep of endpoints) {
+      const fullUrl = base + ep.path;
+      try {
+        const config = {
+          method: ep.method,
+          url: fullUrl,
+          timeout: 7000,
+          validateStatus: () => true
+        };
 
-      if (res.status === 404) {
-        continue; // Try next URL silently
+        if (ep.params) config.params = ep.params(to91, message);
+        if (ep.data) config.data = typeof ep.data === 'function' ? ep.data(to91, message) : ep.data;
+        if (ep.headers) config.headers = ep.headers;
+
+        const res = await axios(config);
+        const resStr = typeof res.data === 'object' ? JSON.stringify(res.data) : String(res.data || '');
+
+        console.log(`🌐 WA Attempt [${ep.method} ${fullUrl}] -> Status: ${res.status} | Res: ${resStr.slice(0, 100)}`);
+
+        if (res.status >= 200 && res.status < 300 && !resStr.includes('404 Not Found')) {
+          console.log(`🎉 SUCCESS! Working Powerstext Endpoint: ${fullUrl}`);
+          WORKING_ENDPOINT_CACHE = { method: ep.method, url: fullUrl, params: ep.params, data: ep.data };
+          return { ok: true, response: res.data, url: fullUrl };
+        } else {
+          lastError = new Error(`HTTP ${res.status}: ${resStr.slice(0, 80)}`);
+        }
+      } catch (err) {
+        lastError = err;
       }
-
-      const resStr = typeof res.data === 'object' ? JSON.stringify(res.data) : String(res.data || '');
-
-      // Check if response indicates success
-      if (res.status >= 200 && res.status < 300 && !resStr.includes('404 Not Found')) {
-        console.log(`🎯 Powerstext Working Endpoint Discovered! -> ${candidate.url}`);
-        WORKING_ENDPOINT_CACHE = candidate; // Cache for next orders!
-        return { ok: true, response: res.data };
-      } else {
-        lastError = new Error(`Status ${res.status}: ${resStr.slice(0, 100)}`);
-      }
-    } catch (err) {
-      lastError = err;
     }
   }
 
-  throw lastError || new Error('All Powerstext endpoints returned 404/Error');
+  throw lastError || new Error('All Powerstext endpoints failed');
 }
 
 /**
- * Main function called by Order Controller
+ * Main Function Called by Controller / Test Route
  */
 async function sendDirectWhatsAppMessage(phone, order) {
   try {
     const to91 = toWhatsAppNumber(phone);
     if (!to91) {
       console.log('⚠️ WhatsApp skipped: invalid phone', phone);
-      return { skipped: true, reason: 'invalid_phone' };
+      return { ok: false, reason: 'invalid_phone' };
     }
 
     if (String(order?.paymentMethod || '').toLowerCase() === 'pending') {
       console.log('⚠️ WhatsApp skipped: pending payment order');
-      return { skipped: true, reason: 'pending_payment' };
+      return { ok: false, reason: 'pending_payment' };
     }
 
     const message = buildInvoiceMessage(order);
+    console.log(`📲 Sending WA Message to ${to91}...`);
     const result = await sendViaPowerstext(to91, message);
 
-    console.log(`✅ WhatsApp Invoice Sent -> ${to91} | Order: ${order?.orderNumber}`);
     return result;
   } catch (err) {
-    console.error('❌ WhatsApp Send Error:', err.message);
+    console.error('❌ WhatsApp Send Final Error:', err.message);
     return { ok: false, error: err.message };
   }
 }

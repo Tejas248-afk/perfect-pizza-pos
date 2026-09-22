@@ -30,4 +30,7 @@ router.patch('/:id/status', updateOrderStatus);
 // 6. PATCH /api/orders/:id/add-items (For Dine-In KOT)
 router.patch('/:id/add-items', addKotItems);
 
+// Add test route
+router.get('/test-whatsapp', testWhatsApp);
+
 module.exports = router;
