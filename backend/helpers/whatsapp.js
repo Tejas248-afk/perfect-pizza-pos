@@ -1,19 +1,19 @@
 const axios = require('axios');
 
-const WAPI_BASE_URL = (process.env.POWERSTEXT_BASE_URL || 'https://wapi.powerstext.in').replace(/\/$/, '');
-const POWERSTEXT_USER = process.env.POWERSTEXT_USER || 'PerfectPizzaWHATPP';
-const POWERSTEXT_PASS = process.env.POWERSTEXT_PASS || 'N@3vtk32t5';
+// Hardcode WAPI Domain & Credentials for naya panel
+const WAPI_BASE_URL = 'https://wapi.powerstext.in';
+const POWERSTEXT_USER = 'PerfectPizzaWHATPP';
+const POWERSTEXT_PASS = 'N@3vtk32t5';
 const INVOICE_BASE_URL = (process.env.INVOICE_BASE_URL || 'https://pizzapos.netlify.app').replace(/\/$/, '');
 
 let WORKING_ENDPOINT_CACHE = null;
 
-// 10 digit -> 91XXXXXXXXXX
-function toWhatsAppNumber(phone) {
+// Clean phone to 10 digits
+function get10Digits(phone) {
   const digits = String(phone || '').replace(/\D/g, '');
   if (!digits) return null;
   const last10 = digits.slice(-10);
-  if (last10.length !== 10) return null;
-  return `91${last10}`;
+  return last10.length === 10 ? last10 : null;
 }
 
 function formatDateTime(dateInput) {
@@ -102,21 +102,28 @@ Singhpur Chauraha, Bithoor Rd, Kalyanpur, Kanpur
 }
 
 /**
- * Direct WAPI Powerstext Sender
+ * Direct WAPI Powerstext Sender with Strict Response Checking
  */
-async function sendViaWAPI(to91, message) {
+async function sendViaWAPI(phone10, message) {
+  const phone12 = '91' + phone10;
+
+  // Cached working route
   if (WORKING_ENDPOINT_CACHE) {
     try {
       const res = await axios({
         method: WORKING_ENDPOINT_CACHE.method,
         url: WORKING_ENDPOINT_CACHE.url,
-        params: WORKING_ENDPOINT_CACHE.params ? WORKING_ENDPOINT_CACHE.params(to91, message) : undefined,
-        data: WORKING_ENDPOINT_CACHE.data ? WORKING_ENDPOINT_CACHE.data(to91, message) : undefined,
-        timeout: 12000,
+        params: WORKING_ENDPOINT_CACHE.getParams(phone12, phone10, message),
+        data: WORKING_ENDPOINT_CACHE.getData ? WORKING_ENDPOINT_CACHE.getData(phone12, phone10, message) : undefined,
+        headers: WORKING_ENDPOINT_CACHE.headers || undefined,
+        timeout: 10000,
         validateStatus: () => true
       });
+
       const resStr = typeof res.data === 'object' ? JSON.stringify(res.data) : String(res.data || '');
-      if (res.status >= 200 && res.status < 300 && !resStr.toLowerCase().includes('failed') && !resStr.toLowerCase().includes('error')) {
+      const lower = resStr.toLowerCase();
+
+      if (res.status >= 200 && res.status < 300 && !lower.includes('failed') && !lower.includes('error') && !lower.includes('code":"001"')) {
         return { ok: true, response: res.data };
       }
     } catch (e) {
@@ -124,45 +131,51 @@ async function sendViaWAPI(to91, message) {
     }
   }
 
-  // Common WAPI Endpoints
+  // Permutations for WAPI panel
   const attempts = [
-    // 1. GET /send-message (Standard WAPI format)
+    // 1. GET /send-message (12 digit, receiver)
     {
       method: 'GET',
       url: `${WAPI_BASE_URL}/send-message`,
-      params: (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, receiver: num, message: msg })
+      getParams: (p12, p10, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, type: 'text', receiver: p12, message: msg })
     },
-    // 2. GET /send-message (to parameter)
+    // 2. GET /send-message (10 digit, receiver)
     {
       method: 'GET',
       url: `${WAPI_BASE_URL}/send-message`,
-      params: (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, to: num, message: msg })
+      getParams: (p12, p10, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, type: 'text', receiver: p10, message: msg })
     },
-    // 3. GET /api/send-message
+    // 3. GET /send-message (12 digit, number)
     {
       method: 'GET',
-      url: `${WAPI_BASE_URL}/api/send-message`,
-      params: (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: num, message: msg })
+      url: `${WAPI_BASE_URL}/send-message`,
+      getParams: (p12, p10, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: p12, message: msg })
     },
-    // 4. GET /api/sendtext.php
+    // 4. GET /send-message (12 digit, to)
+    {
+      method: 'GET',
+      url: `${WAPI_BASE_URL}/send-message`,
+      getParams: (p12, p10, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, to: p12, message: msg })
+    },
+    // 5. GET /api/sendtext.php
     {
       method: 'GET',
       url: `${WAPI_BASE_URL}/api/sendtext.php`,
-      params: (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: num, message: msg })
+      getParams: (p12, p10, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: p12, message: msg })
     },
-    // 5. POST /api/send (JSON)
+    // 6. GET /api/send
     {
-      method: 'POST',
+      method: 'GET',
       url: `${WAPI_BASE_URL}/api/send`,
-      data: (num, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, to: num, message: msg }),
-      headers: { 'Content-Type': 'application/json' }
+      getParams: (p12, p10, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: p12, message: msg })
     },
-    // 6. POST /send-message (Form Data)
+    // 7. POST /send-message (JSON)
     {
       method: 'POST',
       url: `${WAPI_BASE_URL}/send-message`,
-      data: (num, msg) => new URLSearchParams({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, receiver: num, message: msg }).toString(),
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+      getData: (p12, p10, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, receiver: p12, message: msg }),
+      getParams: () => ({}),
+      headers: { 'Content-Type': 'application/json' }
     }
   ];
 
@@ -173,28 +186,33 @@ async function sendViaWAPI(to91, message) {
       const config = {
         method: item.method,
         url: item.url,
-        timeout: 10000,
+        timeout: 8000,
         validateStatus: () => true
       };
 
-      if (item.params) config.params = item.params(to91, message);
-      if (item.data) config.data = typeof item.data === 'function' ? item.data(to91, message) : item.data;
+      if (item.getParams) config.params = item.getParams(phone12, phone10, message);
+      if (item.getData) config.data = item.getData(phone12, phone10, message);
       if (item.headers) config.headers = item.headers;
 
       const res = await axios(config);
       const resStr = typeof res.data === 'object' ? JSON.stringify(res.data) : String(res.data || '');
+      const lower = resStr.toLowerCase();
 
       console.log(`📡 WAPI Attempt [${item.method} ${item.url}] -> Status: ${res.status} | Res: ${resStr.slice(0, 120)}`);
 
-      const isSuccess =
-        res.status >= 200 &&
-        res.status < 300 &&
-        !resStr.toLowerCase().includes('404 not found') &&
-        !resStr.toLowerCase().includes('invalid password') &&
-        !resStr.toLowerCase().includes('unauthorized');
+      // STRICT SUCCESS CHECK
+      const isFailed = lower.includes('failed') || 
+                       lower.includes('error') || 
+                       lower.includes('invalid') || 
+                       lower.includes('unauthorized') || 
+                       lower.includes('404 not found') ||
+                       lower.includes('code":"001"') ||
+                       lower.includes('code":"002"');
+
+      const isSuccess = res.status >= 200 && res.status < 300 && !isFailed;
 
       if (isSuccess) {
-        console.log(`🎉 SUCCESS! WAPI Powerstext Connected: ${item.url}`);
+        console.log(`🎉 SUCCESS! WAPI Powerstext Verified: ${item.url}`);
         WORKING_ENDPOINT_CACHE = item;
         return { ok: true, response: res.data, url: item.url };
       } else {
@@ -209,12 +227,12 @@ async function sendViaWAPI(to91, message) {
 }
 
 /**
- * Main Function Called by Controller / Test Route
+ * Main Function
  */
 async function sendDirectWhatsAppMessage(phone, order) {
   try {
-    const to91 = toWhatsAppNumber(phone);
-    if (!to91) {
+    const phone10 = get10Digits(phone);
+    if (!phone10) {
       console.log('⚠️ WhatsApp skipped: invalid phone', phone);
       return { ok: false, reason: 'invalid_phone' };
     }
@@ -225,8 +243,8 @@ async function sendDirectWhatsAppMessage(phone, order) {
     }
 
     const message = buildInvoiceMessage(order);
-    console.log(`📲 Sending WA Invoice to ${to91} via WAPI...`);
-    const result = await sendViaWAPI(to91, message);
+    console.log(`📲 Sending WA Invoice to ${phone10} via WAPI...`);
+    const result = await sendViaWAPI(phone10, message);
 
     return result;
   } catch (err) {
@@ -238,5 +256,5 @@ async function sendDirectWhatsAppMessage(phone, order) {
 module.exports = {
   sendDirectWhatsAppMessage,
   buildInvoiceMessage,
-  toWhatsAppNumber,
+  toWhatsAppNumber: get10Digits,
 };
