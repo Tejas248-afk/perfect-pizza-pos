@@ -1,11 +1,11 @@
 const axios = require('axios');
 
-// Naya Personal Access Token (PAT)
-const API_TOKEN = 'fb8f9c05b518a'; 
-const WAPI_BASE_URL = 'https://wapi.powerstext.in';
+// Environment Variable or Hardcoded Fallback Token
+const API_TOKEN = process.env.POWERSTEXT_TOKEN || 'fb8f9c05b518a'; 
+const WAPI_SEND_URL = 'https://wapi.powerstext.in/api/send';
 const INVOICE_BASE_URL = (process.env.INVOICE_BASE_URL || 'https://pizzapos.netlify.app').replace(/\/$/, '');
 
-let WORKING_ENDPOINT_CACHE = null;
+let WORKING_CONFIG_CACHE = null;
 
 // Clean phone to 10 digits
 function get10Digits(phone) {
@@ -81,37 +81,76 @@ Singhpur Chauraha, Bithoor Rd, Kalyanpur, Kanpur
 }
 
 /**
- * Token-Based WhatsApp Sender for WAPI
+ * Access Token Based WhatsApp Sender for WAPI (/api/send)
  */
-async function sendViaWAPIToken(phone10, message) {
+async function sendViaWAPIAccessToken(phone10, message) {
   const phone12 = '91' + phone10;
 
-  // List of Token-based endpoints for WAPI
+  // Cached Working Config
+  if (WORKING_CONFIG_CACHE) {
+    try {
+      const res = await axios({
+        method: WORKING_CONFIG_CACHE.method,
+        url: WAPI_SEND_URL,
+        params: WORKING_CONFIG_CACHE.getParams ? WORKING_CONFIG_CACHE.getParams(phone12, phone10, message) : undefined,
+        data: WORKING_CONFIG_CACHE.getData ? WORKING_CONFIG_CACHE.getData(phone12, phone10, message) : undefined,
+        headers: WORKING_CONFIG_CACHE.headers || undefined,
+        timeout: 10000,
+        validateStatus: () => true
+      });
+      const resStr = typeof res.data === 'object' ? JSON.stringify(res.data) : String(res.data || '');
+      if (res.status >= 200 && res.status < 300 && !resStr.toLowerCase().includes('error')) {
+        return { ok: true, response: res.data };
+      }
+    } catch (e) {
+      WORKING_CONFIG_CACHE = null;
+    }
+  }
+
+  // Permutations for /api/send using access_token
   const attempts = [
-    // 1. /api/send (Most stable REST API)
+    // 1. GET with access_token & number (12 digits)
     {
-      url: `${WAPI_BASE_URL}/api/send`,
       method: 'GET',
-      params: (p12, p10, msg) => ({ token: API_TOKEN, number: p12, message: msg })
+      getParams: (p12, p10, msg) => ({ access_token: API_TOKEN, number: p12, message: msg })
     },
-    // 2. /api/send-message
+    // 2. GET with access_token & to (12 digits)
     {
-      url: `${WAPI_BASE_URL}/api/send-message`,
       method: 'GET',
-      params: (p12, p10, msg) => ({ token: API_TOKEN, number: p12, message: msg })
+      getParams: (p12, p10, msg) => ({ access_token: API_TOKEN, to: p12, message: msg })
     },
-    // 3. /api/send-text
+    // 3. GET with access_token & receiver (12 digits)
     {
-      url: `${WAPI_BASE_URL}/api/send-text`,
       method: 'GET',
-      params: (p12, p10, msg) => ({ token: API_TOKEN, number: p12, message: msg })
+      getParams: (p12, p10, msg) => ({ access_token: API_TOKEN, receiver: p12, message: msg })
     },
-    // 4. POST JSON /api/send
+    // 4. GET with access_token & type=text
     {
-      url: `${WAPI_BASE_URL}/api/send`,
+      method: 'GET',
+      getParams: (p12, p10, msg) => ({ access_token: API_TOKEN, type: 'text', number: p12, message: msg })
+    },
+    // 5. POST JSON with access_token in Body
+    {
       method: 'POST',
-      data: (p12, p10, msg) => ({ token: API_TOKEN, number: p12, message: msg }),
+      getData: (p12, p10, msg) => ({ access_token: API_TOKEN, number: p12, message: msg }),
       headers: { 'Content-Type': 'application/json' }
+    },
+    // 6. POST JSON with access_token & to
+    {
+      method: 'POST',
+      getData: (p12, p10, msg) => ({ access_token: API_TOKEN, to: p12, message: msg }),
+      headers: { 'Content-Type': 'application/json' }
+    },
+    // 7. POST with Authorization Header
+    {
+      method: 'POST',
+      getData: (p12, p10, msg) => ({ number: p12, message: msg }),
+      headers: { 'Authorization': `Bearer ${API_TOKEN}`, 'Content-Type': 'application/json' }
+    },
+    // 8. GET with 10 digits number
+    {
+      method: 'GET',
+      getParams: (p12, p10, msg) => ({ access_token: API_TOKEN, number: p10, message: msg })
     }
   ];
 
@@ -121,9 +160,9 @@ async function sendViaWAPIToken(phone10, message) {
     try {
       const config = {
         method: item.method,
-        url: item.url,
-        params: item.params ? item.params(phone12, phone10, message) : undefined,
-        data: item.data ? item.data(phone12, phone10, message) : undefined,
+        url: WAPI_SEND_URL,
+        params: item.getParams ? item.getParams(phone12, phone10, message) : undefined,
+        data: item.getData ? item.getData(phone12, phone10, message) : undefined,
         headers: item.headers || undefined,
         timeout: 10000,
         validateStatus: () => true
@@ -132,30 +171,29 @@ async function sendViaWAPIToken(phone10, message) {
       const res = await axios(config);
       const resStr = typeof res.data === 'object' ? JSON.stringify(res.data) : String(res.data || '');
 
-      console.log(`📡 Token Attempt [${config.method} ${item.url}] -> Status: ${res.status} | Res: ${resStr.slice(0, 150)}`);
+      console.log(`📡 WAPI Token Attempt [${item.method}] -> Status: ${res.status} | Res: ${resStr.slice(0, 150)}`);
 
-      // Success if JSON contains true or status 200 without error text
-      const isSuccess = res.status >= 200 && res.status < 300 && 
-                        !resStr.toLowerCase().includes('failed') && 
-                        !resStr.toLowerCase().includes('error') &&
-                        !resStr.includes('<!DOCTYPE');
+      const lower = resStr.toLowerCase();
+      const isFailed = lower.includes('error') || lower.includes('failed') || lower.includes('invalid') || lower.includes('unauthorized');
+      const isSuccess = res.status >= 200 && res.status < 300 && !isFailed;
 
       if (isSuccess) {
-        console.log(`🎉 SUCCESS! WhatsApp sent using Token API via ${item.url}`);
+        console.log(`🎉 SUCCESS! WAPI WhatsApp Sent via /api/send`);
+        WORKING_CONFIG_CACHE = item;
         return { ok: true, response: res.data };
       } else {
-        lastError = new Error(`API Response: ${resStr.slice(0, 100)}`);
+        lastError = new Error(`HTTP ${res.status}: ${resStr}`);
       }
     } catch (err) {
       lastError = err;
     }
   }
 
-  throw lastError || new Error('All Token-based endpoints failed');
+  throw lastError || new Error('WAPI Access Token Send Failed');
 }
 
 /**
- * Main Function Called by Controller / Test Route
+ * Main Function
  */
 async function sendDirectWhatsAppMessage(phone, order) {
   try {
@@ -167,8 +205,8 @@ async function sendDirectWhatsAppMessage(phone, order) {
     }
 
     const message = buildInvoiceMessage(order);
-    console.log(`📲 Sending WA Invoice via Token Key to ${phone10}...`);
-    const result = await sendViaWAPIToken(phone10, message);
+    console.log(`📲 Sending WA Invoice via Access Token to ${phone10}...`);
+    const result = await sendViaWAPIAccessToken(phone10, message);
 
     return result;
   } catch (err) {
