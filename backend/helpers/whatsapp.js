@@ -7,6 +7,22 @@ const API_TOKEN = process.env.POWERSTEXT_TOKEN || 'fb8f9c05b518a';
 const WAPI_SEND_URL = 'https://wapi.powerstext.in/api/send';
 const INVOICE_BASE_URL = (process.env.INVOICE_BASE_URL || 'https://pizzapos.netlify.app').replace(/\/$/, '');
 
+// 🛑 ANTI-DUPLICATE CACHE (Locks Order ID for 2 Minutes)
+const SENT_CACHE = new Set();
+
+function isDuplicateCall(orderIdOrNum, isCancellation) {
+  if (!orderIdOrNum) return false;
+  const key = `${orderIdOrNum}_${isCancellation ? 'cancel' : 'invoice'}`;
+  
+  if (SENT_CACHE.has(key)) {
+    return true; // DUPLICATE DETECTED!
+  }
+
+  SENT_CACHE.add(key);
+  setTimeout(() => SENT_CACHE.delete(key), 120000); // 2 Min Lock
+  return false;
+}
+
 // ==============================
 // HELPERS
 // ==============================
@@ -17,28 +33,18 @@ function get10Digits(phone) {
   return last10.length === 10 ? last10 : null;
 }
 
-function toWhatsAppNumber(phone) {
-  const phone10 = get10Digits(phone);
-  return phone10 ? `91${phone10}` : null;
-}
-
 function formatDateTime(dateInput) {
   const d = new Date(dateInput || Date.now());
   const date = d.toLocaleDateString('en-IN', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    timeZone: 'Asia/Kolkata',
+    day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata',
   });
   const time = d.toLocaleTimeString('en-IN', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
-    timeZone: 'Asia/Kolkata',
+    hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata',
   });
   return { date, time };
 }
 
+// 1. Invoice Message Template
 function buildInvoiceMessage(order = {}) {
   const name =
     order?.customer?.name && String(order.customer.name).toLowerCase() !== 'guest'
@@ -47,19 +53,12 @@ function buildInvoiceMessage(order = {}) {
 
   const billNo = order?.orderNumber || 'ORD-TEST';
   const amount = Number(order?.grandTotal || 0);
-  const paidAmount =
-    String(order?.paymentMethod || '').toLowerCase() === 'pending' ? 0 : amount;
+  const paidAmount = String(order?.paymentMethod || '').toLowerCase() === 'pending' ? 0 : amount;
   const rewardPoints = Number(order?.rewardCoinsEarned || 0);
   const { date, time } = formatDateTime(order?.createdAt);
 
-  const orderTypeMap = {
-    delivery: 'Home Delivery',
-    takeaway: 'Takeaway',
-    'dine-in': 'Dine-in',
-  };
-  const orderType =
-    orderTypeMap[String(order?.orderType || '').toLowerCase()] ||
-    (order?.orderType || 'Order');
+  const orderTypeMap = { delivery: 'Home Delivery', takeaway: 'Takeaway', 'dine-in': 'Dine-in' };
+  const orderType = orderTypeMap[String(order?.orderType || '').toLowerCase()] || (order?.orderType || 'Order');
 
   const invoiceLink = order?._id
     ? `${INVOICE_BASE_URL}/invoice.html?id=${order._id}`
@@ -104,147 +103,69 @@ Singhpur Chauraha, Bithoor Rd, Kalyanpur, Kanpur
   );
 }
 
-// ==============================
-// SEND API
-// ==============================
-async function sendViaWAPIAccessToken(phone10, message) {
-  const phone12 = `91${phone10}`;
+// 2. Cancellation Message Template
+function buildCancellationMessage(order = {}) {
+  const name =
+    order?.customer?.name && String(order.customer.name).toLowerCase() !== 'guest'
+      ? order.customer.name
+      : 'Customer';
+  const billNo = order?.orderNumber || '-';
 
-  // Best working attempts only
-  const attempts = [
-    // 1) GET access_token + number (12 digit)  ✅ main
-    {
-      method: 'GET',
-      params: {
-        access_token: API_TOKEN,
-        number: phone12,
-        message,
-      },
-    },
-    // 2) GET access_token + number (10 digit)
-    {
-      method: 'GET',
-      params: {
-        access_token: API_TOKEN,
-        number: phone10,
-        message,
-      },
-    },
-    // 3) POST JSON body
-    {
-      method: 'POST',
-      data: {
-        access_token: API_TOKEN,
-        number: phone12,
-        message,
-      },
-      headers: { 'Content-Type': 'application/json' },
-    },
-    // 4) POST JSON with to
-    {
-      method: 'POST',
-      data: {
-        access_token: API_TOKEN,
-        to: phone12,
-        message,
-      },
-      headers: { 'Content-Type': 'application/json' },
-    },
-  ];
+  return (
+`❌ *Order Cancelled* 🍕
 
-  let lastError = null;
+Dear *${name}*,
+Your order *#${billNo}* at *Perfect Pizza* has been cancelled.
 
-  for (const item of attempts) {
-    try {
-      const res = await axios({
-        method: item.method,
-        url: WAPI_SEND_URL,
-        params: item.params || undefined,
-        data: item.data || undefined,
-        headers: item.headers || undefined,
-        timeout: 15000,
-        validateStatus: () => true,
-      });
+If you have any questions or this was done by mistake, please contact us.
 
-      const resStr =
-        typeof res.data === 'object' ? JSON.stringify(res.data) : String(res.data || '');
-      const lower = resStr.toLowerCase();
-
-      console.log(
-        `📡 WAPI Attempt [${item.method}] -> Status: ${res.status} | Res: ${resStr.slice(0, 180)}`
-      );
-
-      // Special clear message for QR not connected
-      if (lower.includes('no active connected whatsapp instances')) {
-        return {
-          ok: false,
-          error:
-            'No active connected WhatsApp instances found. Please open https://wapi.powerstext.in and scan QR code first.',
-          response: res.data,
-        };
-      }
-
-      // Reject HTML / login page
-      if (lower.includes('<!doctype') || lower.includes('<html')) {
-        lastError = new Error('HTML page returned instead of API JSON');
-        continue;
-      }
-
-      const isFailed =
-        lower.includes('"success":false') ||
-        lower.includes('error') ||
-        lower.includes('failed') ||
-        lower.includes('unauthorized') ||
-        lower.includes('invalid');
-
-      const isSuccess =
-        res.status >= 200 &&
-        res.status < 300 &&
-        !isFailed &&
-        (res.data?.success === true ||
-          lower.includes('"success":true') ||
-          lower.includes('sent') ||
-          lower.includes('message queued') ||
-          lower.includes('ok'));
-
-      if (isSuccess) {
-        console.log(`🎉 SUCCESS! WhatsApp sent to ${phone12}`);
-        return { ok: true, response: res.data };
-      }
-
-      lastError = new Error(`HTTP ${res.status}: ${resStr}`);
-    } catch (err) {
-      lastError = err;
-    }
-  }
-
-  throw lastError || new Error('WAPI Access Token Send Failed');
+📞 *Contact:* 9889229198
+📍 *Perfect Pizza, Kalyanpur*`
+  );
 }
 
 // ==============================
-// PUBLIC FUNCTION
+// PUBLIC SENDER (EXACTLY 1 HTTP CALL - NO LOOPS)
 // ==============================
-async function sendDirectWhatsAppMessage(phone, order = {}) {
+async function sendDirectWhatsAppMessage(phone, order = {}, isCancellation = false) {
   try {
     const phone10 = get10Digits(phone);
-    if (!phone10) {
-      console.log('⚠️ WhatsApp skipped: invalid phone', phone);
-      return { ok: false, error: 'invalid_phone' };
-    }
+    if (!phone10) return { ok: false, error: 'invalid_phone' };
 
     // Dine-in table start (pending) pe mat bhejo
-    if (String(order?.paymentMethod || '').toLowerCase() === 'pending') {
-      console.log('⚠️ WhatsApp skipped: pending payment order');
+    if (!isCancellation && String(order?.paymentMethod || '').toLowerCase() === 'pending') {
       return { ok: false, reason: 'pending_payment' };
     }
 
-    const message = buildInvoiceMessage(order);
-    console.log(`📲 Sending WA Invoice via Access Token to ${phone10}...`);
+    // 🛑 DEDUPLICATION CHECK
+    const orderId = order?._id || order?.orderNumber || Date.now();
+    if (isDuplicateCall(orderId, isCancellation)) {
+      console.log(`🛑 DUPLICATE BLOCKED: WhatsApp already sent for ${orderId}`);
+      return { ok: true, skipped: 'duplicate_prevented' };
+    }
 
-    const result = await sendViaWAPIAccessToken(phone10, message);
-    return result;
+    const phone12 = `91${phone10}`;
+    const message = isCancellation ? buildCancellationMessage(order) : buildInvoiceMessage(order);
+
+    console.log(`🚀 Sending SINGLE WhatsApp GET -> Phone: ${phone12} | Order: ${order?.orderNumber || 'N/A'}`);
+
+    // 🔥 EXACTLY ONE SINGLE API CALL! NO LOOPS!
+    const res = await axios.get(WAPI_SEND_URL, {
+      params: {
+        access_token: API_TOKEN,
+        number: phone12,
+        message: message,
+      },
+      timeout: 12000,
+      validateStatus: () => true,
+    });
+
+    const resData = res.data;
+    console.log(`📡 WAPI API Response:`, JSON.stringify(resData));
+
+    return { ok: true, response: resData };
   } catch (err) {
-    console.error('❌ WhatsApp Token API Error:', err.message);
+    console.error('❌ WhatsApp Send Error:', err.message);
     return { ok: false, error: err.message };
   }
 }
@@ -252,6 +173,7 @@ async function sendDirectWhatsAppMessage(phone, order = {}) {
 module.exports = {
   sendDirectWhatsAppMessage,
   buildInvoiceMessage,
-  toWhatsAppNumber,
+  buildCancellationMessage,
+  toWhatsAppNumber: get10Digits,
   get10Digits,
 };

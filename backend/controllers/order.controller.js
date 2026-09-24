@@ -15,15 +15,12 @@ const get10DigitPhone = (p) => String(p || '').replace(/\D/g, '').slice(-10);
 // Rule: ₹20 spent = 1 Coin
 const calculateEarnedCoins = (amount) => Math.floor(safeNum(amount) / 20);
 
-// Fire-and-forget WhatsApp (order response slow nahi hoga)
-function queueWhatsAppInvoice(phone, order) {
+// Fire-and-forget WhatsApp queue helper
+function queueWhatsAppInvoice(phone, order, isCancellation = false) {
   const clean = get10DigitPhone(phone);
-  if (!clean || clean.length !== 10) {
-    console.log('⚠️ WhatsApp skipped: invalid phone');
-    return;
-  }
+  if (!clean || clean.length !== 10) return;
   setImmediate(() => {
-    sendDirectWhatsAppMessage(clean, order).catch((err) => {
+    sendDirectWhatsAppMessage(clean, order, isCancellation).catch((err) => {
       console.error('❌ WhatsApp queue error:', err.message);
     });
   });
@@ -161,20 +158,11 @@ const createOrder = async (req, res) => {
     await newOrder.save();
 
     // =========================================================
-    // 🔥 WHATSAPP INVOICE
-    // Delivery / Takeaway / Dine-in (paid) => turant bhejo
-    // Dine-in table start (pending) => yahan mat bhejo (complete pe jayega)
+    // 🔥 SEND INVOICE WHATSAPP MESSAGE EXACTLY ONCE ON CREATE
     // =========================================================
-    const shouldSendNow =
-      cleanPhone !== 'N/A' &&
-      payMethod !== 'pending' &&
-      initialStatus !== 'cancelled';
-
-    if (shouldSendNow) {
-      console.log(`📲 Queuing WhatsApp invoice for ${cleanPhone} | ${orderNumber} | ${safeOrderType}`);
-      queueWhatsAppInvoice(cleanPhone, newOrder);
-    } else {
-      console.log(`⚠️ WhatsApp skipped on create | phone=${cleanPhone} | pay=${payMethod} | type=${safeOrderType}`);
+    if (cleanPhone !== 'N/A' && payMethod !== 'pending') {
+      console.log(`📲 Queuing WhatsApp invoice for ${cleanPhone} | ${orderNumber}`);
+      queueWhatsAppInvoice(cleanPhone, newOrder, false); // false = invoice
     }
 
     const io = req.app.get('io');
@@ -295,8 +283,7 @@ const getOrders = async (req, res) => {
     let query = {};
     if (status) query.status = status;
     if (today === 'true') {
-      const startOfDay = new Date();
-      startOfDay.setHours(0, 0, 0, 0);
+      const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
       query.createdAt = { $gte: startOfDay };
     }
     const orders = await Order.find(query).sort({ createdAt: -1 });
@@ -320,7 +307,7 @@ const getOrderById = async (req, res) => {
   }
 };
 
-// @desc    Update Status & Award Coins + WhatsApp on Complete (Dine-in included)
+// @desc    Update Status & Award Coins (NO WHATSAPP ON COMPLETE, ONLY ON CANCEL)
 const updateOrderStatus = async (req, res) => {
   try {
     const { status, paymentMethod } = req.body;
@@ -329,7 +316,6 @@ const updateOrderStatus = async (req, res) => {
 
     const oldStatus = String(order.status || '').toLowerCase().trim();
     const newStatus = String(status || '').toLowerCase().trim();
-    const oldPay = String(order.paymentMethod || '').toLowerCase().trim();
 
     order.status = status;
     if (paymentMethod) {
@@ -343,7 +329,7 @@ const updateOrderStatus = async (req, res) => {
     const cleanPhone = get10DigitPhone(order.customer?.phone || order.customerPhone);
     const branchId = order.branch || req.user?.branch?._id || req.user?.branch;
 
-    // 🪙 AWARD COINS WHEN ORDER BECOMES COMPLETED (ALL TYPES)
+    // 🪙 AWARD COINS WHEN ORDER BECOMES COMPLETED
     if (newStatus === 'completed' && !order.coinsAwarded && cleanPhone.length === 10) {
       const earned = order.rewardCoinsEarned != null
         ? safeNum(order.rewardCoinsEarned)
@@ -369,12 +355,12 @@ const updateOrderStatus = async (req, res) => {
           console.log(`🪙 COINS AWARDED | Phone: ${cleanPhone} | +${earned} | Total: ${cust.rewardCoins}`);
         }
       } catch (custErr) {
-        console.error("⚠️ Customer coins update error (non-blocking):", custErr.message);
+        console.error("⚠️ Customer coins update error:", custErr.message);
       }
     }
 
-    // 🔴 CANCEL: revert coins + refund used
-    if (['cancelled', 'canceled', 'rejected'].includes(newStatus)) {
+    // 🔴 CANCEL: Revert coins & Send WhatsApp Cancellation Notice ONLY
+    if (['cancelled', 'canceled', 'rejected'].includes(newStatus) && !['cancelled', 'canceled', 'rejected'].includes(oldStatus)) {
       try {
         const cust = await Customer.findOne({
           $or: [
@@ -400,27 +386,17 @@ const updateOrderStatus = async (req, res) => {
           await cust.save();
         }
       } catch (custErr) {
-        console.error("⚠️ Customer cancel refund error (non-blocking):", custErr.message);
+        console.error("⚠️ Customer cancel refund error:", custErr.message);
+      }
+
+      // 🔥 Send WhatsApp Cancellation Notice ONLY ONCE
+      if (cleanPhone.length === 10) {
+        console.log(`📲 Queuing WhatsApp CANCELLATION for ${cleanPhone} | ${order.orderNumber}`);
+        queueWhatsAppInvoice(cleanPhone, order, true); // true = cancellation message
       }
     }
 
     await order.save();
-
-    // =========================================================
-    // 🔥 DINE-IN / ALL TYPES: WhatsApp invoice on COMPLETE
-    // (pending table start pe nahi, final complete pe haan)
-    // =========================================================
-    const becameCompleted = newStatus === 'completed' && oldStatus !== 'completed';
-    const becamePaidFromPending =
-      oldPay === 'pending' &&
-      paymentMethod &&
-      String(paymentMethod).toLowerCase() !== 'pending';
-
-    if (cleanPhone.length === 10 && (becameCompleted || becamePaidFromPending)) {
-      console.log(`📲 Queuing WhatsApp on status update | ${order.orderNumber} | ${order.orderType}`);
-      queueWhatsAppInvoice(cleanPhone, order);
-    }
-
     const io = req.app.get('io');
     if (io) io.emit('orderUpdated', order);
 
@@ -454,12 +430,12 @@ const addKotItems = async (req, res) => {
   }
 };
 
-
-// Add this near the end of controllers/order.controller.js
+// @desc    WhatsApp Test Route
 const testWhatsApp = async (req, res) => {
   try {
     const phone = req.query.phone || '9889229198';
     const dummyOrder = {
+      _id: 'test_order_101',
       orderNumber: 'ORD-TEST-101',
       grandTotal: 350,
       paymentMethod: 'cash',
@@ -469,14 +445,13 @@ const testWhatsApp = async (req, res) => {
       customer: { name: 'Test Customer' }
     };
 
-    const result = await sendDirectWhatsAppMessage(phone, dummyOrder);
+    const result = await sendDirectWhatsAppMessage(phone, dummyOrder, false);
     return res.json({ message: "WhatsApp Test Triggered", phone, result });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
 };
 
-// Ensure testWhatsApp is exported in module.exports at the end of the file:
 module.exports = {
   createOrder,
   lookupCustomer,
@@ -484,5 +459,5 @@ module.exports = {
   getOrderById,
   updateOrderStatus,
   addKotItems,
-  testWhatsApp // <-- ADD THIS
+  testWhatsApp
 };
