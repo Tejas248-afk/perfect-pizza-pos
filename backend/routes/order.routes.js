@@ -11,28 +11,32 @@ const {
   testWhatsApp
 } = require('../controllers/order.controller');
 
-// 🔴 SPECIFIC ROUTES MUST COME BEFORE GENERIC /:id ROUTES!
+// 🔴 SPECIFIC & PUBLIC ROUTES (MUST COME BEFORE GENERIC /:id ROUTES!)
 
-// 1. WhatsApp Test Route (Browser me direct kholne ke liye bina token ke)
+// 1. Public Invoice View Route (For WhatsApp Link - Unprotected Access)
+router.get('/public/:id', getOrderById);
+
+// 2. WhatsApp Test Route (Browser me direct test karne ke liye)
 router.get('/test-whatsapp', testWhatsApp);
 
-// 2. Customer Lookup
+// 3. Customer Lookup
 router.get('/customer/:phone', lookupCustomer);
 
-// 3. Fetch All Orders
+// 4. Fetch All Orders
 router.get('/', getOrders);
 
-// 4. Create Order
+// 5. Create Order
 router.post('/', createOrder);
 
-// 🔴 PARAMETER / ID ROUTES MUST COME LAST!
-// 5. Get Order By ID
+// 🔴 PARAMETER / ID ROUTES (MUST COME LAST!)
+
+// 6. Get Order By ID
 router.get('/:id', getOrderById);
 
-// 6. Update Status
+// 7. Update Status
 router.patch('/:id/status', updateOrderStatus);
 
-// 7. Add KOT Items
+// 8. Add KOT Items
 router.patch('/:id/add-items', addKotItems);
 
 module.exports = router;

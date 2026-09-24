@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Invoice - Perfect Pizza</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Poppins', sans-serif; }
+    body { background-color: #f1f5f9; color: #1e293b; padding: 20px 10px; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+    
+    .invoice-card { background: #ffffff; width: 100%; max-width: 420px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.08); padding: 24px; position: relative; overflow: hidden; }
+    .invoice-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 6px; background: linear-gradient(90deg, #22c55e, #14b8a6); }
+    
+    .brand-header { text-align: center; margin-bottom: 20px; border-bottom: 1px dashed #cbd5e1; padding-bottom: 15px; }
+    .brand-logo { width: 60px; height: auto; margin-bottom: 8px; }
+    .brand-header h1 { font-size: 20px; color: #0f172a; font-weight: 700; }
+    .brand-header p { font-size: 12px; color: #64748b; margin-top: 2px; }
+    
+    .badge-status { display: inline-block; background: #dcfce7; color: #166534; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; margin-top: 10px; text-transform: uppercase; }
+
+    .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 12px; margin-bottom: 15px; background: #f8fafc; padding: 12px; border-radius: 8px; }
+    .meta-item span { color: #64748b; display: block; font-size: 10px; }
+    .meta-item strong { color: #0f172a; font-size: 12px; }
+
+    .items-table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+    .items-table th { text-align: left; font-size: 11px; color: #64748b; padding-bottom: 8px; border-bottom: 1px solid #e2e8f0; text-transform: uppercase; }
+    .items-table td { font-size: 13px; padding: 10px 0; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+    .item-extras { font-size: 10px; color: #64748b; display: block; margin-top: 2px; }
+
+    .summary-section { border-top: 1px dashed #cbd5e1; padding-top: 12px; font-size: 13px; }
+    .summary-row { display: flex; justify-content: space-between; margin-bottom: 6px; color: #475569; }
+    .summary-row.total { font-size: 16px; font-weight: 700; color: #0f172a; border-top: 2px solid #0f172a; padding-top: 8px; margin-top: 6px; }
+
+    .rewards-box { background: #fef9c3; border: 1px solid #fef08a; padding: 10px; border-radius: 8px; text-align: center; font-size: 12px; color: #854d0e; font-weight: 600; margin-top: 15px; }
+
+    .actions { margin-top: 20px; display: flex; gap: 10px; }
+    .btn-action { flex: 1; padding: 12px; border: none; border-radius: 8px; font-weight: 600; font-size: 13px; cursor: pointer; text-align: center; text-decoration: none; }
+    .btn-print { background: #0f172a; color: #ffffff; }
+    .btn-order { background: #22c55e; color: #ffffff; }
+
+    .loader { text-align: center; padding: 40px 0; color: #64748b; font-size: 14px; }
+    .error-msg { text-align: center; color: #ef4444; padding: 20px; font-size: 14px; }
+
+    @media print {
+      body { background: #fff; padding: 0; }
+      .invoice-card { box-shadow: none; max-width: 100%; padding: 0; }
+      .actions { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="invoice-card" id="invoiceCard">
+    <div class="loader" id="loader">⏳ Loading Invoice...</div>
+    <div id="invoiceContent" style="display: none;"></div>
+  </div>
+
+  <script>
+    const RENDER_BACKEND_URL = "https://perfect-pizza-pos.onrender.com"; 
+
+    window.API_URL = (window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1'))
+      ? 'http://localhost:5000/api'
+      : `${RENDER_BACKEND_URL}/api`;
+
+    async function loadPublicInvoice() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const orderId = urlParams.get('id');
+
+      const loader = document.getElementById('loader');
+      const content = document.getElementById('invoiceContent');
+
+      if (!orderId) {
+        loader.innerHTML = '<div class="error-msg">❌ Invalid Invoice Link</div>';
+        return;
+      }
+
+      try {
+        // 🔥 Public Un-protected Route Call
+        const res = await fetch(`${window.API_URL}/orders/public/${orderId}`);
+        if (!res.ok) throw new Error('Invoice not found');
+
+        const order = await res.json();
+        loader.style.display = 'none';
+        content.style.display = 'block';
+
+        renderInvoiceHTML(order);
+      } catch (err) {
+        console.error(err);
+        loader.innerHTML = `<div class="error-msg">❌ Unable to load invoice<br><small>${err.message}</small></div>`;
+      }
+    }
+
+    function renderInvoiceHTML(order) {
+      const content = document.getElementById('invoiceContent');
+
+      const dateObj = new Date(order.createdAt || Date.now());
+      const dateStr = dateObj.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+      const timeStr = dateObj.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+      const name = order.customer?.name || 'Customer';
+      const phone = order.customer?.phone || 'N/A';
+      const type = (order.orderType || 'Order').toUpperCase();
+      const status = (order.status || 'Paid').toUpperCase();
+
+      let itemsHtml = (order.items || []).map(i => {
+        const itemP = (Number(i.basePrice) || 0) + (Number(i.crustPrice) || 0) + (Number(i.addonsTotal) || 0);
+        let extras = [];
+        if (i.size) extras.push(i.size.toUpperCase());
+        if (i.crust?.name) extras.push(i.crust.name);
+        if (Array.isArray(i.addons)) i.addons.forEach(a => a?.name && extras.push(a.name));
+        if (i.comboSelections) extras.push(...i.comboSelections);
+
+        return `
+          <tr>
+            <td>
+              <b>${i.qty}x ${i.product?.name || i.productName || 'Item'}</b>
+              ${extras.length ? `<span class="item-extras">${extras.join(', ')}</span>` : ''}
+            </td>
+            <td style="text-align:right;">₹${itemP * (i.qty || 1)}</td>
+          </tr>
+        `;
+      }).join('');
+
+      content.innerHTML = `
+        <div class="brand-header">
+          <img src="images/logo.png" onerror="this.style.display='none'" class="brand-logo" alt="Logo">
+          <h1>PERFECT PIZZA</h1>
+          <p>Singhpur Chauraha, Kalyanpur, Kanpur</p>
+          <p>Ph: 9889229198 | GSTIN: 09BCVPDD4203L2ZB</p>
+          <span class="badge-status">${status}</span>
+        </div>
+
+        <div class="meta-grid">
+          <div class="meta-item"><span>INVOICE NO</span><strong>${order.orderNumber || '-'}</strong></div>
+          <div class="meta-item"><span>DATE & TIME</span><strong>${dateStr} ${timeStr}</strong></div>
+          <div class="meta-item"><span>CUSTOMER</span><strong>${name}</strong></div>
+          <div class="meta-item"><span>ORDER TYPE</span><strong>${type}</strong></div>
+          ${order.deliveryAddress ? `<div class="meta-item" style="grid-column: span 2;"><span>ADDRESS</span><strong>${order.deliveryAddress}</strong></div>` : ''}
+        </div>
+
+        <table class="items-table">
+          <thead>
+            <tr>
+              <th>ITEMS</th>
+              <th style="text-align:right;">AMOUNT</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${itemsHtml}
+          </tbody>
+        </table>
+
+        <div class="summary-section">
+          <div class="summary-row"><span>Subtotal</span><span>₹${order.subtotal || 0}</span></div>
+          ${order.discount ? `<div class="summary-row" style="color:#ef4444;"><span>Discount</span><span>-₹${order.discount}</span></div>` : ''}
+          ${order.rewardCoinsValue ? `<div class="summary-row" style="color:#16a34a;"><span>Coins Discount</span><span>-₹${order.rewardCoinsValue}</span></div>` : ''}
+          ${order.deliveryCharge ? `<div class="summary-row"><span>Delivery Charge</span><span>+₹${order.deliveryCharge}</span></div>` : ''}
+          ${order.gstAmount ? `<div class="summary-row"><span>GST (5%)</span><span>+₹${Number(order.gstAmount).toFixed(2)}</span></div>` : ''}
+          <div class="summary-row total"><span>TOTAL PAID</span><span>₹${order.grandTotal || 0}</span></div>
+          <div class="summary-row" style="font-size:11px; margin-top:4px;"><span>Payment Method</span><span style="text-transform:uppercase; font-weight:600;">${order.paymentMethod || 'CASH'}</span></div>
+        </div>
+
+        ${order.rewardCoinsEarned ? `<div class="rewards-box">🎁 You Earned +${order.rewardCoinsEarned} Reward Coins!</div>` : ''}
+
+        <div class="actions">
+          <button class="btn-action btn-print" onclick="window.print()">🖨️ Print Invoice</button>
+          <a href="https://perfectpizzas.in/" target="_blank" class="btn-action btn-order">🍕 Order Again</a>
+        </div>
+      `;
+    }
+
+    document.addEventListener('DOMContentLoaded', loadPublicInvoice);
+  </script>
+</body>
+</html>
