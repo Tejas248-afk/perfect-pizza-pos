@@ -1,9 +1,8 @@
 const axios = require('axios');
 
-// Hardcode WAPI Domain & Credentials for naya panel
+// Naya Personal Access Token (PAT)
+const API_TOKEN = 'fb8f9c05b518a'; 
 const WAPI_BASE_URL = 'https://wapi.powerstext.in';
-const POWERSTEXT_USER = 'PerfectPizzaWHATPP';
-const POWERSTEXT_PASS = 'N@3vtk32t5';
 const INVOICE_BASE_URL = (process.env.INVOICE_BASE_URL || 'https://pizzapos.netlify.app').replace(/\/$/, '');
 
 let WORKING_ENDPOINT_CACHE = null;
@@ -19,48 +18,28 @@ function get10Digits(phone) {
 function formatDateTime(dateInput) {
   const d = new Date(dateInput || Date.now());
   const date = d.toLocaleDateString('en-IN', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
+    day: '2-digit', month: 'short', year: 'numeric',
     timeZone: 'Asia/Kolkata',
   });
   const time = d.toLocaleTimeString('en-IN', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
+    hour: '2-digit', minute: '2-digit', hour12: true,
     timeZone: 'Asia/Kolkata',
   });
   return { date, time };
 }
 
 function buildInvoiceMessage(order) {
-  const name =
-    order?.customer?.name && order.customer.name !== 'Guest'
-      ? order.customer.name
-      : 'Customer';
-
+  const name = order?.customer?.name && order.customer.name !== 'Guest' ? order.customer.name : 'Customer';
   const billNo = order?.orderNumber || 'ORD-TEST';
   const amount = Number(order?.grandTotal || 0);
-  const paidAmount =
-    String(order?.paymentMethod || '').toLowerCase() === 'pending'
-      ? 0
-      : amount;
-
+  const paidAmount = String(order?.paymentMethod || '').toLowerCase() === 'pending' ? 0 : amount;
   const rewardPoints = Number(order?.rewardCoinsEarned || 0);
   const { date, time } = formatDateTime(order?.createdAt);
 
-  const orderTypeMap = {
-    delivery: 'Home Delivery',
-    takeaway: 'Takeaway',
-    'dine-in': 'Dine-in',
-  };
-  const orderType =
-    orderTypeMap[String(order?.orderType || '').toLowerCase()] ||
-    (order?.orderType || 'Order');
+  const orderTypeMap = { delivery: 'Home Delivery', takeaway: 'Takeaway', 'dine-in': 'Dine-in' };
+  const orderType = orderTypeMap[String(order?.orderType || '').toLowerCase()] || (order?.orderType || 'Order');
 
-  const invoiceLink = order?._id
-    ? `${INVOICE_BASE_URL}/invoice.html?id=${order._id}`
-    : `${INVOICE_BASE_URL}`;
+  const invoiceLink = order?._id ? `${INVOICE_BASE_URL}/invoice.html?id=${order._id}` : `${INVOICE_BASE_URL}`;
 
   return (
 `🙏 Thank You for Ordering from *Perfect Pizza!* 🍕
@@ -102,79 +81,36 @@ Singhpur Chauraha, Bithoor Rd, Kalyanpur, Kanpur
 }
 
 /**
- * Direct WAPI Powerstext Sender with Strict Response Checking
+ * Token-Based WhatsApp Sender for WAPI
  */
-async function sendViaWAPI(phone10, message) {
+async function sendViaWAPIToken(phone10, message) {
   const phone12 = '91' + phone10;
 
-  // Cached working route
-  if (WORKING_ENDPOINT_CACHE) {
-    try {
-      const res = await axios({
-        method: WORKING_ENDPOINT_CACHE.method,
-        url: WORKING_ENDPOINT_CACHE.url,
-        params: WORKING_ENDPOINT_CACHE.getParams(phone12, phone10, message),
-        data: WORKING_ENDPOINT_CACHE.getData ? WORKING_ENDPOINT_CACHE.getData(phone12, phone10, message) : undefined,
-        headers: WORKING_ENDPOINT_CACHE.headers || undefined,
-        timeout: 10000,
-        validateStatus: () => true
-      });
-
-      const resStr = typeof res.data === 'object' ? JSON.stringify(res.data) : String(res.data || '');
-      const lower = resStr.toLowerCase();
-
-      if (res.status >= 200 && res.status < 300 && !lower.includes('failed') && !lower.includes('error') && !lower.includes('code":"001"')) {
-        return { ok: true, response: res.data };
-      }
-    } catch (e) {
-      WORKING_ENDPOINT_CACHE = null;
-    }
-  }
-
-  // Permutations for WAPI panel
+  // List of Token-based endpoints for WAPI
   const attempts = [
-    // 1. GET /send-message (12 digit, receiver)
+    // 1. /api/send (Most stable REST API)
     {
-      method: 'GET',
-      url: `${WAPI_BASE_URL}/send-message`,
-      getParams: (p12, p10, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, type: 'text', receiver: p12, message: msg })
-    },
-    // 2. GET /send-message (10 digit, receiver)
-    {
-      method: 'GET',
-      url: `${WAPI_BASE_URL}/send-message`,
-      getParams: (p12, p10, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, type: 'text', receiver: p10, message: msg })
-    },
-    // 3. GET /send-message (12 digit, number)
-    {
-      method: 'GET',
-      url: `${WAPI_BASE_URL}/send-message`,
-      getParams: (p12, p10, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: p12, message: msg })
-    },
-    // 4. GET /send-message (12 digit, to)
-    {
-      method: 'GET',
-      url: `${WAPI_BASE_URL}/send-message`,
-      getParams: (p12, p10, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, to: p12, message: msg })
-    },
-    // 5. GET /api/sendtext.php
-    {
-      method: 'GET',
-      url: `${WAPI_BASE_URL}/api/sendtext.php`,
-      getParams: (p12, p10, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: p12, message: msg })
-    },
-    // 6. GET /api/send
-    {
-      method: 'GET',
       url: `${WAPI_BASE_URL}/api/send`,
-      getParams: (p12, p10, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, number: p12, message: msg })
+      method: 'GET',
+      params: (p12, p10, msg) => ({ token: API_TOKEN, number: p12, message: msg })
     },
-    // 7. POST /send-message (JSON)
+    // 2. /api/send-message
     {
+      url: `${WAPI_BASE_URL}/api/send-message`,
+      method: 'GET',
+      params: (p12, p10, msg) => ({ token: API_TOKEN, number: p12, message: msg })
+    },
+    // 3. /api/send-text
+    {
+      url: `${WAPI_BASE_URL}/api/send-text`,
+      method: 'GET',
+      params: (p12, p10, msg) => ({ token: API_TOKEN, number: p12, message: msg })
+    },
+    // 4. POST JSON /api/send
+    {
+      url: `${WAPI_BASE_URL}/api/send`,
       method: 'POST',
-      url: `${WAPI_BASE_URL}/send-message`,
-      getData: (p12, p10, msg) => ({ username: POWERSTEXT_USER, password: POWERSTEXT_PASS, receiver: p12, message: msg }),
-      getParams: () => ({}),
+      data: (p12, p10, msg) => ({ token: API_TOKEN, number: p12, message: msg }),
       headers: { 'Content-Type': 'application/json' }
     }
   ];
@@ -186,69 +122,57 @@ async function sendViaWAPI(phone10, message) {
       const config = {
         method: item.method,
         url: item.url,
-        timeout: 8000,
+        params: item.params ? item.params(phone12, phone10, message) : undefined,
+        data: item.data ? item.data(phone12, phone10, message) : undefined,
+        headers: item.headers || undefined,
+        timeout: 10000,
         validateStatus: () => true
       };
 
-      if (item.getParams) config.params = item.getParams(phone12, phone10, message);
-      if (item.getData) config.data = item.getData(phone12, phone10, message);
-      if (item.headers) config.headers = item.headers;
-
       const res = await axios(config);
       const resStr = typeof res.data === 'object' ? JSON.stringify(res.data) : String(res.data || '');
-      const lower = resStr.toLowerCase();
 
-      console.log(`📡 WAPI Attempt [${item.method} ${item.url}] -> Status: ${res.status} | Res: ${resStr.slice(0, 120)}`);
+      console.log(`📡 Token Attempt [${config.method} ${item.url}] -> Status: ${res.status} | Res: ${resStr.slice(0, 150)}`);
 
-      // STRICT SUCCESS CHECK
-      const isFailed = lower.includes('failed') || 
-                       lower.includes('error') || 
-                       lower.includes('invalid') || 
-                       lower.includes('unauthorized') || 
-                       lower.includes('404 not found') ||
-                       lower.includes('code":"001"') ||
-                       lower.includes('code":"002"');
-
-      const isSuccess = res.status >= 200 && res.status < 300 && !isFailed;
+      // Success if JSON contains true or status 200 without error text
+      const isSuccess = res.status >= 200 && res.status < 300 && 
+                        !resStr.toLowerCase().includes('failed') && 
+                        !resStr.toLowerCase().includes('error') &&
+                        !resStr.includes('<!DOCTYPE');
 
       if (isSuccess) {
-        console.log(`🎉 SUCCESS! WAPI Powerstext Verified: ${item.url}`);
-        WORKING_ENDPOINT_CACHE = item;
-        return { ok: true, response: res.data, url: item.url };
+        console.log(`🎉 SUCCESS! WhatsApp sent using Token API via ${item.url}`);
+        return { ok: true, response: res.data };
       } else {
-        lastError = new Error(`HTTP ${res.status}: ${resStr.slice(0, 100)}`);
+        lastError = new Error(`API Response: ${resStr.slice(0, 100)}`);
       }
     } catch (err) {
       lastError = err;
     }
   }
 
-  throw lastError || new Error('WAPI Powerstext connection failed');
+  throw lastError || new Error('All Token-based endpoints failed');
 }
 
 /**
- * Main Function
+ * Main Function Called by Controller / Test Route
  */
 async function sendDirectWhatsAppMessage(phone, order) {
   try {
     const phone10 = get10Digits(phone);
-    if (!phone10) {
-      console.log('⚠️ WhatsApp skipped: invalid phone', phone);
-      return { ok: false, reason: 'invalid_phone' };
-    }
+    if (!phone10) return { ok: false, error: 'invalid_phone' };
 
     if (String(order?.paymentMethod || '').toLowerCase() === 'pending') {
-      console.log('⚠️ WhatsApp skipped: pending payment order');
       return { ok: false, reason: 'pending_payment' };
     }
 
     const message = buildInvoiceMessage(order);
-    console.log(`📲 Sending WA Invoice to ${phone10} via WAPI...`);
-    const result = await sendViaWAPI(phone10, message);
+    console.log(`📲 Sending WA Invoice via Token Key to ${phone10}...`);
+    const result = await sendViaWAPIToken(phone10, message);
 
     return result;
   } catch (err) {
-    console.error('❌ WhatsApp Send Error:', err.message);
+    console.error('❌ WhatsApp Token API Error:', err.message);
     return { ok: false, error: err.message };
   }
 }
