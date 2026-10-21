@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -111,11 +111,12 @@
 </head>
 <body>
   <header class="pos-header">
-    <h2>📊 Sales Report (Order-wise)</h2>
+    <h2>ðŸ“Š Sales Report (Order-wise)</h2>
     <div class="nav-links">
-      <a href="orders.html">📋 Live Orders</a>
-      <a href="pos.html" class="btn-pos">← POS</a>
+      <a href="orders.html">ðŸ“‹ Live Orders</a>
+      <a href="pos.html" class="btn-pos">â† POS</a>
       <button onclick="logout()" class="btn-logout">Logout</button>
+      <a href="customers.html" class="btn-orders-nav" style="background:#10B981;">👥 Customers</a>
     </div>
   </header>
 
@@ -150,7 +151,7 @@
             <option value="cancelled">Cancelled</option>
           </select>
         </div>
-        <button class="btn-apply" onclick="loadReport()">✔ Apply</button>
+        <button class="btn-apply" onclick="loadReport()">âœ” Apply</button>
         <button class="btn-reset" onclick="setRange('today')">Reset</button>
         <!-- This triggers normal table print -->
         <button class="btn-reset" onclick="window.print()"><i class="fa-solid fa-print"></i> Print</button>
@@ -161,7 +162,7 @@
     <div class="kpi-row">
       <div class="kpi green">
         <div class="t">NET SALES</div>
-        <div class="v" id="kpiNet">₹0</div>
+        <div class="v" id="kpiNet">â‚¹0</div>
       </div>
       <div class="kpi blue">
         <div class="t">ORDERS</div>
@@ -169,11 +170,11 @@
       </div>
       <div class="kpi orange">
         <div class="t">TAX</div>
-        <div class="v" id="kpiTax">₹0</div>
+        <div class="v" id="kpiTax">â‚¹0</div>
       </div>
       <div class="kpi red">
         <div class="t">CANCELLED</div>
-        <div class="v" id="kpiCancel">₹0</div>
+        <div class="v" id="kpiCancel">â‚¹0</div>
       </div>
     </div>
 

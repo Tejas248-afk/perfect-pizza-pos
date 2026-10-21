@@ -1,0 +1,129 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Customer Records - Perfect Pizza</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    .cust-container { padding: 20px; max-width: 1400px; margin: 0 auto; }
+    .cust-actions { display: flex; justify-content: space-between; align-items: center; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; }
+    .search-box { flex: 1; min-width: 250px; position: relative; }
+    .search-box input { width: 100%; padding: 12px 16px; border-radius: 8px; border: 1px solid #ccc; font-size: 15px; font-family: inherit; }
+    .btn-group { display: flex; gap: 10px; }
+    .btn-cust { padding: 10px 18px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-size: 14px; transition: 0.2s; }
+    .btn-add { background: #2563EB; color: #fff; }
+    .btn-add:hover { background: #1D4ED8; }
+    .btn-export { background: #10B981; color: #fff; }
+    .btn-export:hover { background: #059669; }
+    
+    .table-card { background: #fff; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); overflow: hidden; }
+    .cust-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 14px; }
+    .cust-table th { background: #F8FAFC; color: #475569; font-weight: 600; padding: 14px 16px; border-bottom: 1px solid #E2E8F0; }
+    .cust-table td { padding: 12px 16px; border-bottom: 1px solid #EDF2F7; color: #1E293B; }
+    .cust-table tr:hover { background: #F1F5F9; }
+    
+    .btn-sm { padding: 6px 12px; border-radius: 6px; border: none; font-size: 12px; font-weight: 600; cursor: pointer; }
+    .btn-edit { background: #F59E0B; color: #fff; margin-right: 5px; }
+    .btn-del { background: #EF4444; color: #fff; }
+
+    .pagination { display: flex; justify-content: space-between; align-items: center; padding: 15px 20px; background: #fff; border-top: 1px solid #E2E8F0; font-size: 14px; color: #64748B; }
+    .page-btns { display: flex; gap: 8px; }
+    .page-btn { padding: 6px 14px; border: 1px solid #CBD5E1; background: #fff; border-radius: 6px; cursor: pointer; font-weight: 500; }
+    .page-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* Modal */
+    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 1000; }
+    .modal-overlay.active { display: flex; }
+    .modal-box { background: #fff; padding: 25px; border-radius: 12px; width: 100%; max-width: 450px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
+    .modal-box h3 { margin-top: 0; font-size: 18px; color: #0F172A; }
+    .form-group { margin-bottom: 15px; }
+    .form-group label { display: block; margin-bottom: 6px; font-weight: 500; font-size: 13px; color: #475569; }
+    .form-group input, .form-group textarea { width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #CBD5E1; font-family: inherit; font-size: 14px; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <header class="pos-header">
+    <div class="brand">
+      <span class="logo">👥</span>
+      <h2>Customer Directory <small>3,200+ Records · Edit · Export</small></h2>
+    </div>
+    <div class="user-info">
+      <a href="pos.html" class="btn-orders-nav btn-nav-yellow">🍕 POS Billing</a>
+      <a href="orders.html" class="btn-orders-nav btn-nav-dark">📋 Orders</a>
+      <a href="reports.html" class="btn-orders-nav" style="background:#8B5CF6;">📊 Reports</a>
+      <a href="settings.html" class="btn-orders-nav" style="background:#64748B;">⚙️ Settings</a>
+    </div>
+  </header>
+
+  <div class="cust-container">
+    <div class="cust-actions">
+      <div class="search-box">
+        <input type="text" id="searchInput" placeholder="🔍 Search by Name, Phone Number, or Address..." oninput="onSearchChange()">
+      </div>
+      <div class="btn-group">
+        <button class="btn-cust btn-add" onclick="openAddModal()">➕ Add Customer</button>
+        <button class="btn-cust btn-export" onclick="exportToCSV()">📥 Export Excel (CSV)</button>
+      </div>
+    </div>
+
+    <div class="table-card">
+      <table class="cust-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Phone</th>
+            <th>Address</th>
+            <th>Coins</th>
+            <th>Orders</th>
+            <th>Spent</th>
+            <th style="text-align: right;">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="customerTableBody">
+          <tr><td colspan="7" style="text-align: center; padding: 30px;">Loading customers...</td></tr>
+        </tbody>
+      </table>
+
+      <div class="pagination">
+        <div id="pageStats">Showing 0 of 0</div>
+        <div class="page-btns">
+          <button class="page-btn" id="prevBtn" onclick="changePage(-1)" disabled>Previous</button>
+          <span id="pageIndicator" style="align-self: center; font-weight: 600;">Page 1</span>
+          <button class="page-btn" id="nextBtn" onclick="changePage(1)" disabled>Next</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal for Add/Edit -->
+  <div class="modal-overlay" id="custModal">
+    <div class="modal-box">
+      <h3 id="modalTitle">Edit Customer</h3>
+      <form id="custForm" onsubmit="saveCustomer(event)">
+        <input type="hidden" id="custId">
+        <div class="form-group">
+          <label>Customer Name</label>
+          <input type="text" id="custName" required placeholder="e.g. Rahul Sharma">
+        </div>
+        <div class="form-group">
+          <label>Phone Number</label>
+          <input type="text" id="custPhone" required placeholder="10-digit phone number">
+        </div>
+        <div class="form-group">
+          <label>Address</label>
+          <textarea id="custAddress" rows="3" placeholder="Street / Area / House No"></textarea>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-cust" style="background:#E2E8F0; color:#334155;" onclick="closeModal()">Cancel</button>
+          <button type="submit" class="btn-cust btn-add">Save Customer</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="js/customers.js"></script>
+</body>
+</html>

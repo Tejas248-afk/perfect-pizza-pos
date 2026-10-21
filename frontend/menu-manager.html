@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -13,16 +13,17 @@
   <!-- Unified Header -->
   <header class="pos-header">
     <div class="brand">
-      <span class="logo">📝</span>
+      <span class="logo">ðŸ“</span>
       <h2>Menu Manager <small>Edit Products, Prices, Crusts, Add-ons</small></h2>
     </div>
     <div class="user-info">
-      <a href="kitchen.html" target="_blank" class="btn-orders-nav btn-nav-dark">👨‍🍳 Kitchen</a>
-      <a href="tables.html" class="btn-orders-nav btn-nav-yellow">🪑 Tables</a>
-      <a href="reports.html" class="btn-orders-nav btn-nav-blue">📊 Reports</a>
-      <a href="orders.html" class="btn-orders-nav btn-nav-primary">📋 Live Orders</a>
-      <a href="settings.html" class="btn-orders-nav" style="background:#475569;">⚙️ Settings</a>
-      <a href="pos.html" class="btn-orders-nav btn-nav-gray">← POS</a>
+      <a href="kitchen.html" target="_blank" class="btn-orders-nav btn-nav-dark">ðŸ‘¨â€ðŸ³ Kitchen</a>
+      <a href="tables.html" class="btn-orders-nav btn-nav-yellow">ðŸª‘ Tables</a>
+      <a href="reports.html" class="btn-orders-nav btn-nav-blue">ðŸ“Š Reports</a>
+      <a href="orders.html" class="btn-orders-nav btn-nav-primary">ðŸ“‹ Live Orders</a>
+      <a href="customers.html" class="btn-orders-nav" style="background:#10B981;">👥 Customers</a>
+      <a href="settings.html" class="btn-orders-nav" style="background:#475569;">âš™ï¸ Settings</a>
+      <a href="pos.html" class="btn-orders-nav btn-nav-gray">â† POS</a>
       <button onclick="logout()" class="btn-logout">Logout</button>
     </div>
   </header>
@@ -31,10 +32,10 @@
     
     <!-- Tab Navigation -->
     <div class="tabs">
-      <button class="tab-btn active" onclick="switchTab('products')">🍕 Products & Prices</button>
-      <button class="tab-btn" onclick="switchTab('categories')">📁 Categories</button>
-      <button class="tab-btn" onclick="switchTab('crusts')">🍞 Crusts</button>
-      <button class="tab-btn" onclick="switchTab('addons')">🧀 Add-ons</button>
+      <button class="tab-btn active" onclick="switchTab('products')">ðŸ• Products & Prices</button>
+      <button class="tab-btn" onclick="switchTab('categories')">ðŸ“ Categories</button>
+      <button class="tab-btn" onclick="switchTab('crusts')">ðŸž Crusts</button>
+      <button class="tab-btn" onclick="switchTab('addons')">ðŸ§€ Add-ons</button>
     </div>
 
     <!-- Toolbar -->
@@ -63,7 +64,7 @@
     <div class="mm-modal">
       <div class="mm-modal-head">
         <h3 id="modalTitle">Add / Edit Item</h3>
-        <button type="button" class="mm-close" onclick="closeModal()">✕</button>
+        <button type="button" class="mm-close" onclick="closeModal()">âœ•</button>
       </div>
 
       <form id="editForm" onsubmit="saveItem(event)" class="mm-form">
@@ -73,7 +74,7 @@
 
         <div class="mm-modal-foot">
           <button type="button" class="mm-btn mm-btn-cancel" onclick="closeModal()">Cancel</button>
-          <button type="submit" class="mm-btn mm-btn-save">💾 Save Changes</button>
+          <button type="submit" class="mm-btn mm-btn-save">ðŸ’¾ Save Changes</button>
         </div>
       </form>
     </div>

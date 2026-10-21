@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -11,34 +11,35 @@
 <body>
   <header class="pos-header">
     <div class="brand">
-      <span class="logo">⚙️</span>
-      <h2>Settings <small>Café · Staff · Rewards</small></h2>
+      <span class="logo">âš™ï¸</span>
+      <h2>Settings <small>CafÃ© Â· Staff Â· Rewards</small></h2>
     </div>
     <div class="user-info">
-      <a href="kitchen.html" target="_blank" class="btn-orders-nav btn-nav-dark">👨‍🍳 Kitchen</a>
-      <a href="tables.html" class="btn-orders-nav btn-nav-yellow">🪑 Tables</a>
-      <a href="menu-manager.html" class="btn-orders-nav" style="background:#8B5CF6;">📝 Menu</a>
-      <a href="reports.html" class="btn-orders-nav btn-nav-blue">📊 Reports</a>
-      <a href="pos.html" class="btn-orders-nav btn-nav-gray">← POS</a>
+      <a href="kitchen.html" target="_blank" class="btn-orders-nav btn-nav-dark">ðŸ‘¨â€ðŸ³ Kitchen</a>
+      <a href="tables.html" class="btn-orders-nav btn-nav-yellow">ðŸª‘ Tables</a>
+      <a href="menu-manager.html" class="btn-orders-nav" style="background:#8B5CF6;">ðŸ“ Menu</a>
+      <a href="reports.html" class="btn-orders-nav btn-nav-blue">ðŸ“Š Reports</a>
+      <a href="pos.html" class="btn-orders-nav btn-nav-gray">â† POS</a>
       <button onclick="logout()" class="btn-logout">Logout</button>
+      <a href="customers.html" class="btn-orders-nav" style="background:#10B981;">👥 Customers</a>
     </div>
   </header>
 
   <div class="settings-wrap">
     <div class="settings-tabs">
-      <button class="st-tab active" onclick="switchSettingsTab('cafe')">🏪 Café Details</button>
-      <button class="st-tab" onclick="switchSettingsTab('rewards')">🎁 Rewards</button>
-      <button class="st-tab" onclick="switchSettingsTab('staff')">👥 Staff</button>
+      <button class="st-tab active" onclick="switchSettingsTab('cafe')">ðŸª CafÃ© Details</button>
+      <button class="st-tab" onclick="switchSettingsTab('rewards')">ðŸŽ Rewards</button>
+      <button class="st-tab" onclick="switchSettingsTab('staff')">ðŸ‘¥ Staff</button>
     </div>
 
     <!-- CAFE DETAILS -->
     <section id="tab-cafe" class="settings-panel">
       <div class="settings-card">
-        <h3>Café Information</h3>
+        <h3>CafÃ© Information</h3>
         <form id="cafeForm" onsubmit="saveCafeSettings(event)">
           <div class="form-grid">
             <div class="fg">
-              <label>Café Name</label>
+              <label>CafÃ© Name</label>
               <input type="text" id="cafeName" required>
             </div>
             <div class="fg">
@@ -79,7 +80,7 @@
             </div>
             <div class="fg full">
               <label>Bill Footer Text</label>
-              <input type="text" id="footerText" placeholder="Thank You! Visit Again 🍕">
+              <input type="text" id="footerText" placeholder="Thank You! Visit Again ðŸ•">
             </div>
             <div class="fg">
               <label>Default GST %</label>
@@ -93,7 +94,7 @@
             </div>
           </div>
           <div class="form-actions">
-            <button type="submit" class="btn-save">💾 Save Café Settings</button>
+            <button type="submit" class="btn-save">ðŸ’¾ Save CafÃ© Settings</button>
           </div>
         </form>
       </div>
@@ -103,11 +104,11 @@
     <section id="tab-rewards" class="settings-panel hidden">
       <div class="settings-card">
         <h3>Reward Coins Rules</h3>
-        <p class="hint-text">Current rule example: Bill &gt; ₹100 → 20 coins, else 10 coins. Redeem: 20 coins = ₹5</p>
+        <p class="hint-text">Current rule example: Bill &gt; â‚¹100 â†’ 20 coins, else 10 coins. Redeem: 20 coins = â‚¹5</p>
         <form id="rewardsForm" onsubmit="saveRewardSettings(event)">
           <div class="form-grid">
             <div class="fg">
-              <label>Bill threshold (₹)</label>
+              <label>Bill threshold (â‚¹)</label>
               <input type="number" id="rewardThreshold" min="0" value="100">
             </div>
             <div class="fg">
@@ -115,7 +116,7 @@
               <input type="number" id="earnAboveHundred" min="0" value="20">
             </div>
             <div class="fg">
-              <label>Coins if bill ≤ threshold</label>
+              <label>Coins if bill â‰¤ threshold</label>
               <input type="number" id="earnBelowOrEqualHundred" min="0" value="10">
             </div>
             <div class="fg">
@@ -123,15 +124,15 @@
               <input type="number" id="coinsPerRedeemBlock" min="1" value="20">
             </div>
             <div class="fg">
-              <label>Value of one block (₹)</label>
+              <label>Value of one block (â‚¹)</label>
               <input type="number" id="redeemBlockValue" min="1" value="5">
             </div>
           </div>
           <div class="reward-preview" id="rewardPreview">
-            20 coins = ₹5 discount
+            20 coins = â‚¹5 discount
           </div>
           <div class="form-actions">
-            <button type="submit" class="btn-save">💾 Save Reward Rules</button>
+            <button type="submit" class="btn-save">ðŸ’¾ Save Reward Rules</button>
           </div>
         </form>
       </div>
@@ -169,7 +170,7 @@
     <div class="mm-modal" style="max-width:480px;">
       <div class="mm-modal-head">
         <h3 id="staffModalTitle">Add Staff</h3>
-        <button type="button" class="mm-close" onclick="closeStaffModal()">✕</button>
+        <button type="button" class="mm-close" onclick="closeStaffModal()">âœ•</button>
       </div>
       <form id="staffForm" onsubmit="saveStaff(event)" class="mm-form">
         <div class="mm-modal-body">

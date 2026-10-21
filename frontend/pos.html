@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -21,14 +21,15 @@
     </div>
     
     <div class="user-info">
-      <a href="kitchen.html" target="_blank" class="btn-orders-nav btn-nav-dark">👨‍🍳 Kitchen</a>
-      <a href="tables.html" class="btn-orders-nav btn-nav-yellow">🪑 Tables</a>
-      <a href="menu-manager.html" class="btn-orders-nav" style="background:#8B5CF6;">📝 Menu</a>
-      <a href="reports.html" class="btn-orders-nav btn-nav-blue">📊 Reports</a>
-      <a href="settings.html" class="btn-orders-nav" style="background:#334155;">⚙️ Settings</a>
-      <a href="orders.html" class="btn-orders-nav btn-nav-primary">📋 Live Orders</a>
-      <button id="nightModeBtn" class="btn-orders-nav btn-night-toggle" onclick="toggleNightMode()">🌙 Night</button>
-      <span id="userName">👤 Cashier</span>
+      <a href="kitchen.html" target="_blank" class="btn-orders-nav btn-nav-dark">ðŸ‘¨â€ðŸ³ Kitchen</a>
+      <a href="tables.html" class="btn-orders-nav btn-nav-yellow">ðŸª‘ Tables</a>
+      <a href="menu-manager.html" class="btn-orders-nav" style="background:#8B5CF6;">ðŸ“ Menu</a>
+      <a href="reports.html" class="btn-orders-nav btn-nav-blue">ðŸ“Š Reports</a>
+      <a href="customers.html" class="btn-orders-nav" style="background:#10B981;">👥 Customers</a>
+      <a href="settings.html" class="btn-orders-nav" style="background:#334155;">âš™ï¸ Settings</a>
+      <a href="orders.html" class="btn-orders-nav btn-nav-primary">ðŸ“‹ Live Orders</a>
+      <button id="nightModeBtn" class="btn-orders-nav btn-night-toggle" onclick="toggleNightMode()">ðŸŒ™ Night</button>
+      <span id="userName">ðŸ‘¤ Cashier</span>
       <button onclick="logout()" class="btn-logout">Logout</button>
     </div>
   </header>
@@ -36,15 +37,15 @@
   <!-- Smart Action Bar -->
   <div class="smart-action-bar">
     <div class="customer-search-wrap">
-      <input type="text" id="customerPhone" placeholder="📞 10-Digit Phone" maxlength="10">
-      <button class="btn-search-icon" onclick="manualCustomerSearch()">🔍</button>
-      <input type="text" id="customerName" placeholder="👤 Name">
-      <input type="text" id="customerAddress" placeholder="📍 Address" style="display:none; width: 250px;">
+      <input type="text" id="customerPhone" placeholder="ðŸ“ž 10-Digit Phone" maxlength="10">
+      <button class="btn-search-icon" onclick="manualCustomerSearch()">ðŸ”</button>
+      <input type="text" id="customerName" placeholder="ðŸ‘¤ Name">
+      <input type="text" id="customerAddress" placeholder="ðŸ“ Address" style="display:none; width: 250px;">
     </div>
         <div class="order-type-selector">
-      <label><input type="radio" name="orderType" value="delivery"> 🚚 Delivery</label>
-      <label><input type="radio" name="orderType" value="takeaway"> 🥡 Takeaway</label>
-      <label><input type="radio" name="orderType" value="dine-in" checked> 🪑 Dine-in</label>
+      <label><input type="radio" name="orderType" value="delivery"> ðŸšš Delivery</label>
+      <label><input type="radio" name="orderType" value="takeaway"> ðŸ¥¡ Takeaway</label>
+      <label><input type="radio" name="orderType" value="dine-in" checked> ðŸª‘ Dine-in</label>
     </div>
   </div>
 
@@ -67,9 +68,9 @@
       <span id="ccPhone" class="muted">98XXXXXXXX</span>
     </div>
     <div class="cc-stats">
-      <span class="badge-coin">🪙 <b id="ccCoins">0</b> Coins</span>
-      <span>📦 <b id="ccOrders">0</b> Orders</span>
-      <span>💰 ₹<b id="ccSpent">0</b></span>
+      <span class="badge-coin">ðŸª™ <b id="ccCoins">0</b> Coins</span>
+      <span>ðŸ“¦ <b id="ccOrders">0</b> Orders</span>
+      <span>ðŸ’° â‚¹<b id="ccSpent">0</b></span>
     </div>
   </div>
 
@@ -78,7 +79,7 @@
     <button type="button" class="cc-prev-toggle" id="prevOrdersToggle" onclick="togglePrevOrders()">
       <span class="cc-prev-toggle-left">
         <span class="cc-plus" id="prevOrdersPlus">+</span>
-        <span class="cc-prev-title">📜 Previous Orders (Last 5)</span>
+        <span class="cc-prev-title">ðŸ“œ Previous Orders (Last 5)</span>
       </span>
       <span class="cc-prev-count" id="prevOrdersCount">0</span>
     </button>
@@ -91,8 +92,8 @@
 
       <!-- Product Search -->
       <div class="product-search-wrap">
-        <input type="text" id="productSearch" placeholder="🔍 Search pizza, burger, combo..." autocomplete="off">
-        <button type="button" class="btn-clear-search" id="clearSearchBtn" onclick="clearProductSearch()" title="Clear">✕</button>
+        <input type="text" id="productSearch" placeholder="ðŸ” Search pizza, burger, combo..." autocomplete="off">
+        <button type="button" class="btn-clear-search" id="clearSearchBtn" onclick="clearProductSearch()" title="Clear">âœ•</button>
       </div>
 
       <!-- Products Grid -->
@@ -102,7 +103,7 @@
     <!-- RIGHT: Cart Panel (FIXED ON RIGHT SIDE) -->
     <aside class="cart-panel">
       <div class="cart-header">
-        <h3>🛒 Current Order</h3>
+        <h3>ðŸ›’ Current Order</h3>
         <span class="item-count" id="cartItemCount">0 items</span>
       </div>
 
@@ -113,7 +114,7 @@
 
       <div class="cart-items" id="cartItems">
         <div class="empty-cart">
-          <span style="font-size:40px; margin-bottom:10px; display:block;">🛒</span>
+          <span style="font-size:40px; margin-bottom:10px; display:block;">ðŸ›’</span>
           Cart is empty
         </div>
       </div>
@@ -122,26 +123,26 @@
       <div class="cart-summary">
         <div class="summary-line">
           <span class="label">Subtotal</span>
-          <span id="cartSubtotal" class="value font-bold">₹0</span>
+          <span id="cartSubtotal" class="value font-bold">â‚¹0</span>
         </div>
 
         <!-- One button for Discount / Coins / Service -->
         <div class="summary-line charges-edit-row">
           <span class="label"> Charges & Discount</span>
           <button type="button" class="btn-edit-charges" onclick="openChargesModal()">
-            ✏️ Edit
+            âœï¸ Edit
           </button>
         </div>
 
         <!-- Live mini preview -->
         <div class="charges-preview" id="chargesPreview">
-          <span id="previewDiscount">Disc: ₹0</span>
-          <span id="previewCoins">Coins: -₹0</span>
-          <span id="previewService">Svc: ₹0</span>
+          <span id="previewDiscount">Disc: â‚¹0</span>
+          <span id="previewCoins">Coins: -â‚¹0</span>
+          <span id="previewService">Svc: â‚¹0</span>
         </div>
 
         <div class="summary-line" id="deliveryRow">
-          <span class="label">Delivery Charge (₹)</span>
+          <span class="label">Delivery Charge (â‚¹)</span>
           <input type="number" id="deliveryChargeInput" value="0" min="0" class="mini-input">
         </div>
 
@@ -150,27 +151,27 @@
             <input type="checkbox" id="gstToggle">
             <span class="gst-text">Add 5% GST</span>
           </label>
-          <span id="cartGst" class="value font-bold">₹0</span>
+          <span id="cartGst" class="value font-bold">â‚¹0</span>
         </div>
         
         <div class="summary-line payment-line">
           <span class="label font-bold">Payment</span>
           <select id="paymentMethod" class="select-input">
-            <option value="cash" selected>Cash 💵</option>
-            <option value="upi">UPI ✅</option>
-            <option value="card">Card 💳</option>
+            <option value="cash" selected>Cash ðŸ’µ</option>
+            <option value="upi">UPI âœ…</option>
+            <option value="card">Card ðŸ’³</option>
           </select>
         </div>
 
         <div class="grand-total-box">
           <span>TOTAL</span>
-          <span id="cartTotal">₹0</span>
+          <span id="cartTotal">â‚¹0</span>
         </div>
       </div>
 
       <div class="cart-actions">
-        <button class="btn-pay" id="payBtn">💳 PAY & BILL</button>
-        <button class="btn-clear" id="clearTableBtn" style="display:none;">🖨️ FINAL BILL (CLEAR TABLE)</button>
+        <button class="btn-pay" id="payBtn">ðŸ’³ PAY & BILL</button>
+        <button class="btn-clear" id="clearTableBtn" style="display:none;">ðŸ–¨ï¸ FINAL BILL (CLEAR TABLE)</button>
       </div>
     </aside>
   </div>
@@ -180,7 +181,7 @@
     <div class="modal-content">
       <div class="modal-header">
         <h3 id="modalItemName">Item Name</h3>
-        <button class="close-modal" onclick="closeModal()">✕</button>
+        <button class="close-modal" onclick="closeModal()">âœ•</button>
       </div>
       <div class="modal-body" id="modalBody"></div>
       <div class="modal-footer">
@@ -189,7 +190,7 @@
           <span id="modalQty">1</span>
           <button onclick="updateModalQty(1)">+</button>
         </div>
-        <button class="btn-add-cart" onclick="addToCart()">Add to Cart - <span id="modalPrice">₹0</span></button>
+        <button class="btn-add-cart" onclick="addToCart()">Add to Cart - <span id="modalPrice">â‚¹0</span></button>
       </div>
     </div>
   </div>
@@ -200,25 +201,25 @@
   <div class="modal-overlay hidden" id="chargesModal">
     <div class="modal-content charges-modal">
       <div class="modal-header">
-        <h3>✏️ Edit Charges</h3>
-        <button class="close-modal" onclick="closeChargesModal()">✕</button>
+        <h3>âœï¸ Edit Charges</h3>
+        <button class="close-modal" onclick="closeChargesModal()">âœ•</button>
       </div>
       <div class="modal-body">
         <div class="form-group">
-          <label class="label text-danger">Discount (₹)</label>
+          <label class="label text-danger">Discount (â‚¹)</label>
           <input type="number" id="discountInput" value="0" min="0" class="full-input">
         </div>
 
         <div class="form-group coins-modal-row" id="coinsRow">
           <label class="coins-label">
             <input type="checkbox" id="redeemCoinsToggle" disabled>
-            🪙 Use Coins (<span id="availableCoinsText">0</span>)
+            ðŸª™ Use Coins (<span id="availableCoinsText">0</span>)
           </label>
-          <span id="cartCoinsDiscount" class="value text-success font-bold">-₹0</span>
+          <span id="cartCoinsDiscount" class="value text-success font-bold">-â‚¹0</span>
         </div>
 
         <div class="form-group">
-          <label class="label">Service Charge (₹)</label>
+          <label class="label">Service Charge (â‚¹)</label>
           <input type="number" id="serviceChargeInput" value="0" min="0" class="full-input">
         </div>
       </div>

@@ -71,6 +71,7 @@ const createOrder = async (req, res) => {
 
     if (cleanPhone !== 'N/A') {
       const finalAddress = String(customerAddress || deliveryAddress || '').trim();
+      const safeName = (customerName && customerName.toLowerCase() !== 'guest') ? customerName : 'Guest';
 
       // Find Customer Profile
       let customer = await Customer.findOne({
@@ -90,42 +91,35 @@ const createOrder = async (req, res) => {
         customer.rewardCoins = Math.max(0, currentBalance - coinsToRedeem);
       }
 
+      // Upsert Customer Logic
       if (!customer) {
-        try {
-          customer = await Customer.create({
-            branch: branchId,
-            phone: cleanPhone,
-            name: (customerName && customerName.toLowerCase() !== 'guest') ? customerName : 'Guest',
-            address: finalAddress,
-            rewardCoins: 0,
-            totalOrders: 0,
-            totalSpent: 0
-          });
-        } catch (e) {
-          customer = await Customer.findOne({ phone: { $regex: cleanPhone + '$', $options: 'i' } });
-        }
+        customer = new Customer({
+          branch: branchId,
+          phone: cleanPhone,
+          name: safeName,
+          address: finalAddress,
+          rewardCoins: 0,
+          totalOrders: 0,
+          totalSpent: 0
+        });
       } else {
-        customer.phone = cleanPhone;
         if (branchId && !customer.branch) customer.branch = branchId;
-        if (customerName && customerName.toLowerCase() !== 'guest') customer.name = customerName;
+        if (safeName !== 'Guest') customer.name = safeName;
         if (finalAddress) customer.address = finalAddress;
       }
 
       // If order is placed directly as "completed"
       if (initialStatus === 'completed') {
-        if (customer) {
-          customer.rewardCoins = safeNum(customer.rewardCoins) + rewardCoinsEarned;
-          customer.totalOrders = safeNum(customer.totalOrders) + 1;
-          customer.totalSpent = safeNum(customer.totalSpent) + safeGrandTotal;
-        }
+        customer.rewardCoins = safeNum(customer.rewardCoins) + rewardCoinsEarned;
+        customer.totalOrders = safeNum(customer.totalOrders) + 1;
+        customer.totalSpent = safeNum(customer.totalSpent) + safeGrandTotal;
         coinsAwarded = true;
       }
 
-      if (customer) {
-        if (branchId && !customer.branch) customer.branch = branchId;
-        await customer.save().catch(err => console.error("⚠️ Customer save warning:", err.message));
-        customerObj = { id: customer._id, _id: customer._id, name: customer.name, phone: cleanPhone };
-      }
+      // 🔥 FORCE SAVE ALWAYS
+      await customer.save().catch(err => console.error("⚠️ Customer save error:", err.message));
+      
+      customerObj = { id: customer._id, _id: customer._id, name: customer.name, phone: cleanPhone };
     }
 
     const safeOrderType = ['delivery', 'takeaway', 'dine-in'].includes(type)
@@ -307,7 +301,7 @@ const getOrderById = async (req, res) => {
   }
 };
 
-// @desc    Update Status & Award Coins (NO WHATSAPP ON COMPLETE, ONLY ON CANCEL)
+// @desc    Update Status & Award Coins
 const updateOrderStatus = async (req, res) => {
   try {
     const { status, paymentMethod } = req.body;
@@ -359,7 +353,7 @@ const updateOrderStatus = async (req, res) => {
       }
     }
 
-    // 🔴 CANCEL: Revert coins & Send WhatsApp Cancellation Notice ONLY
+    // 🔴 CANCEL: Revert coins & Send WhatsApp Cancellation Notice
     if (['cancelled', 'canceled', 'rejected'].includes(newStatus) && !['cancelled', 'canceled', 'rejected'].includes(oldStatus)) {
       try {
         const cust = await Customer.findOne({
@@ -389,10 +383,10 @@ const updateOrderStatus = async (req, res) => {
         console.error("⚠️ Customer cancel refund error:", custErr.message);
       }
 
-      // 🔥 Send WhatsApp Cancellation Notice ONLY ONCE
+      // 🔥 Send WhatsApp Cancellation Notice
       if (cleanPhone.length === 10) {
         console.log(`📲 Queuing WhatsApp CANCELLATION for ${cleanPhone} | ${order.orderNumber}`);
-        queueWhatsAppInvoice(cleanPhone, order, true); // true = cancellation message
+        queueWhatsAppInvoice(cleanPhone, order, true); 
       }
     }
 
