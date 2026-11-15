@@ -44,21 +44,28 @@ function formatDateTime(dateInput) {
   return { date, time };
 }
 
-// 1. Invoice Message Template
+// 1. Invoice Message Template (UPDATED WITH NEW FORMAT & REWARD COINS)
 function buildInvoiceMessage(order = {}) {
   const name =
     order?.customer?.name && String(order.customer.name).toLowerCase() !== 'guest'
       ? order.customer.name
       : 'Customer';
 
-  const billNo = order?.orderNumber || 'ORD-TEST';
+  const billNo = order?.orderNumber || 'ORD-101';
   const amount = Number(order?.grandTotal || 0);
   const paidAmount = String(order?.paymentMethod || '').toLowerCase() === 'pending' ? 0 : amount;
-  const rewardPoints = Number(order?.rewardCoinsEarned || 0);
-  const { date, time } = formatDateTime(order?.createdAt);
-
-  const orderTypeMap = { delivery: 'Home Delivery', takeaway: 'Takeaway', 'dine-in': 'Dine-in' };
-  const orderType = orderTypeMap[String(order?.orderType || '').toLowerCase()] || (order?.orderType || 'Order');
+  
+  const rewardPointsEarned = Number(order?.rewardCoinsEarned || 0);
+  
+  // Total Reward Points balance calculation
+  let totalRewardPoints = rewardPointsEarned;
+  if (order?.customer?.rewardCoins != null && !isNaN(Number(order.customer.rewardCoins))) {
+    totalRewardPoints = Number(order.customer.rewardCoins);
+  } else if (order?.customerData?.rewardCoins != null && !isNaN(Number(order.customerData.rewardCoins))) {
+    totalRewardPoints = Number(order.customerData.rewardCoins);
+  } else if (order?.totalRewardCoins != null && !isNaN(Number(order.totalRewardCoins))) {
+    totalRewardPoints = Number(order.totalRewardCoins);
+  }
 
   const invoiceLink = order?._id
     ? `${INVOICE_BASE_URL}/invoice.html?id=${order._id}`
@@ -69,37 +76,28 @@ function buildInvoiceMessage(order = {}) {
 
 Dear *${name}*,
 Your delicious order has been received! 🍕🛵
-Thank you for choosing *Perfect Pizza*. ❤️
 
-🧾 *Invoice Details*
-━━━━━━━━━━━━━━
-👤 *Customer:* ${name}
-🧾 *Invoice No:* ${billNo}
-📅 *Date:* ${date} ${time}
+🧾 *Order ID:* ${billNo}
+💰 *Amount Paid:* ₹${paidAmount}
+🎁 *Reward Points Earned:* ${rewardPointsEarned}
+🎁 *Total Reward Points:* ${totalRewardPoints}
 
-💰 *Total Payable:* ₹${amount}
-✅ *Paid Amount:* ₹${paidAmount}
-🛵 *Order Type:* ${orderType}
-🎁 *Reward Points Earned:* ${rewardPoints}
-━━━━━━━━━━━━━━
+📲 *Download Our App:*
+Perfect Pizza-Food Delivery
+👉 https://t.ly/kbCgq
 
-🔥 *MORE SAVINGS ONLINE!* 🔥
-🎟️ *Exclusive Online Discounts*
-🍕 *Best Offers Every Day*
-🎁 *Earn Reward Points*
-💰 *Use Rewards on Future Orders*
+🎉 *FLAT ₹100 OFF* on orders above ₹299.
+✅ *Valid on your FIRST 5 ONLINE ORDERS!*
 
-🌐 *Order Online:* https://perfectpizzas.in/
+🌐 *Order Now:* https://perfectpizzas.in/
 
-🧾 *View / Print Invoice:*
-${invoiceLink}
+🧾 *Invoice:* ${invoiceLink}
 
-📞 *Contact:* 9889229198
-📍 *Perfect Pizza*
-Singhpur Chauraha, Bithoor Rd, Kalyanpur, Kanpur
+📞 9889229198
+📍 Singhpur Chauraha, Bithoor Rd, Kalyanpur, Kanpur
 
-✨ *Thanks again!*
-🍕 *Hot, Fresh & Perfect Every Time!*`
+✨ *Thank you for choosing Perfect Pizza!*
+*Hot, Fresh & Perfect Every Time!* 🍕❤️`
   );
 }
 
