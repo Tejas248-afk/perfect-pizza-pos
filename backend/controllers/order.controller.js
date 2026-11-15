@@ -169,47 +169,73 @@ const createOrder = async (req, res) => {
   }
 };
 
-// @desc    Lookup customer by phone
+// @desc    Lookup customer by phone OR name
 // @route   GET /api/orders/customer/:phone
 // @access  Private
 const lookupCustomer = async (req, res) => {
   try {
-    const cleanPhone = get10DigitPhone(req.params.phone);
-    if (cleanPhone.length < 10) {
-      return res.status(400).json({ found: false, message: 'Valid 10-digit phone required' });
-    }
-
+    const queryTerm = req.params.phone || req.query.q || '';
+    const cleanPhone = get10DigitPhone(queryTerm);
     const branchId = req.user?.branch?._id || req.user?.branch;
 
-    let customer = await Customer.findOne({
-      $or: [
-        { phone: cleanPhone },
-        { phone: { $regex: cleanPhone + '$', $options: 'i' } }
-      ]
-    });
+    let customer = null;
+    let allOrders = [];
 
-    const orderOrConditions = [
-      { 'customer.phone': cleanPhone },
-      { 'customerPhone': cleanPhone },
-      { 'phone': cleanPhone },
-      { 'customer.phone': { $regex: cleanPhone + '$', $options: 'i' } },
-      { 'customerPhone': { $regex: cleanPhone + '$', $options: 'i' } },
-      { 'phone': { $regex: cleanPhone + '$', $options: 'i' } }
-    ];
+    // 1. Search by 10-Digit Phone
+    if (cleanPhone.length === 10) {
+      customer = await Customer.findOne({
+        $or: [
+          { phone: cleanPhone },
+          { phone: { $regex: cleanPhone + '$', $options: 'i' } }
+        ]
+      });
 
-    if (customer && customer._id) {
-      orderOrConditions.push({ 'customer.id': customer._id });
-      orderOrConditions.push({ 'customer._id': customer._id });
-      orderOrConditions.push({ 'customer': customer._id });
+      const orderOrConditions = [
+        { 'customer.phone': cleanPhone },
+        { 'customerPhone': cleanPhone },
+        { 'phone': cleanPhone },
+        { 'customer.phone': { $regex: cleanPhone + '$', $options: 'i' } },
+        { 'customerPhone': { $regex: cleanPhone + '$', $options: 'i' } }
+      ];
+
+      if (customer && customer._id) {
+        orderOrConditions.push({ 'customer.id': customer._id });
+        orderOrConditions.push({ 'customer._id': customer._id });
+        orderOrConditions.push({ 'customer': customer._id });
+      }
+
+      allOrders = await Order.find({ $or: orderOrConditions }).sort({ createdAt: -1 }).lean();
+
+    } 
+    // 2. Search by Name (if query is text)
+    else if (queryTerm.length >= 2) {
+      customer = await Customer.findOne({
+        name: { $regex: queryTerm, $options: 'i' }
+      });
+
+      if (customer) {
+        const cPhone = get10DigitPhone(customer.phone);
+        if (cPhone.length === 10) {
+          allOrders = await Order.find({
+            $or: [
+              { 'customer.id': customer._id },
+              { 'customer._id': customer._id },
+              { 'customerPhone': cPhone },
+              { 'customer.phone': cPhone }
+            ]
+          }).sort({ createdAt: -1 }).lean();
+        }
+      }
+    } else {
+      return res.status(400).json({ found: false, message: 'Valid phone or name required' });
     }
 
-    const allOrders = await Order.find({ $or: orderOrConditions }).sort({ createdAt: -1 }).lean();
-
-    let realName = '';
-    allOrders.forEach(o => {
-      const n = o.customer?.name || o.customerName || '';
-      if (n && n.toLowerCase() !== 'guest' && !realName) realName = n;
-    });
+    // Calculate real totals
+    let realName = customer ? customer.name : '';
+    if (!realName || realName.toLowerCase() === 'guest') {
+      const nameOrder = allOrders.find(o => o.customer?.name && o.customer.name.toLowerCase() !== 'guest');
+      if (nameOrder) realName = nameOrder.customer.name;
+    }
 
     const completedOrders = allOrders.filter(o => String(o.status || '').toLowerCase() === 'completed');
     const nonCancelledOrders = allOrders.filter(o => !['cancelled', 'canceled', 'cancel', 'rejected'].includes(String(o.status || '').toLowerCase()));
@@ -230,22 +256,21 @@ const lookupCustomer = async (req, res) => {
       try {
         customer = await Customer.create({
           branch: branchId,
-          phone: cleanPhone,
+          phone: cleanPhone.length === 10 ? cleanPhone : 'N/A',
           name: realName || 'Guest',
           rewardCoins: computedCoins,
           totalOrders: computedOrders,
           totalSpent: computedSpent
         });
       } catch (e) {
-        customer = await Customer.findOne({ phone: { $regex: cleanPhone + '$', $options: 'i' } });
+        console.error("Customer heal error", e.message);
       }
     } else {
-      customer.phone = cleanPhone;
       if (branchId && !customer.branch) customer.branch = branchId;
       customer.rewardCoins = computedCoins;
       customer.totalOrders = computedOrders;
       customer.totalSpent = computedSpent;
-      if ((!customer.name || customer.name.toLowerCase() === 'guest') && realName) {
+      if ((!customer.name || customer.name.toLowerCase() === 'guest') && realName && realName.toLowerCase() !== 'guest') {
         customer.name = realName;
       }
       await customer.save().catch(e => console.error("Customer heal save error:", e.message));
@@ -255,7 +280,7 @@ const lookupCustomer = async (req, res) => {
       found: true,
       customer: {
         _id: customer ? customer._id : null,
-        phone: cleanPhone,
+        phone: customer?.phone || cleanPhone,
         name: customer?.name || realName || 'Guest',
         address: customer?.address || '',
         rewardCoins: customer ? safeNum(customer.rewardCoins) : computedCoins,

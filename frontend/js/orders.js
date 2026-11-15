@@ -517,3 +517,11 @@ loadOrders(false);
 setInterval(() => {
   loadOrders(true);
 }, 10000);
+
+// AUTO_REFRESH_TIMER_SET
+if (window.ordersAutoRefreshInterval) clearInterval(window.ordersAutoRefreshInterval);
+window.ordersAutoRefreshInterval = setInterval(() => {
+  if (typeof loadOrders === 'function') {
+    loadOrders(true);
+  }
+}, 10000);

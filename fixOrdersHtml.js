@@ -1,0 +1,62 @@
+﻿const fs = require('fs');
+const path = require('path');
+
+const ordersHtmlPath = path.join(__dirname, 'frontend', 'orders.html');
+
+const cleanOrdersHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Orders - Perfect Pizza</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/orders.css">
+  <link rel="stylesheet" href="css/pos.css">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Socket.io CDN -->
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+</head>
+<body>
+  <header class="pos-header">
+    <div class="brand">
+      <span class="logo">📋</span>
+      <h2>Orders <small>Live & History</small></h2>
+      <button class="btn-night-toggle" id="nightModeBtn" onclick="toggleNightMode()">🌙 Night</button>
+    </div>
+    
+    <div class="user-info">
+      <a href="pos.html" class="btn-orders-nav btn-nav-yellow">POS Billing</a>
+      <a href="orders.html" class="btn-orders-nav btn-nav-dark">Orders</a>
+      <a href="kitchen.html" target="_blank" class="btn-orders-nav btn-nav-dark">Kitchen</a>
+      <a href="tables.html" class="btn-orders-nav btn-nav-yellow">Tables</a>
+      <a href="menu-manager.html" class="btn-orders-nav" style="background:#8B5CF6;">Menu</a>
+      <a href="reports.html" class="btn-orders-nav btn-nav-blue">Reports</a>
+      <a href="customers.html" class="btn-orders-nav" style="background:#10B981;">Customers</a>
+      <a href="settings.html" class="btn-orders-nav" style="background:#64748B;">Settings</a>
+      <button onclick="logout()" class="btn-logout">Logout</button>
+    </div>
+  </header>
+
+  <div class="orders-toolbar">
+    <div class="filter-tabs">
+      <button class="tab active" data-status="active">⚡ Active</button>
+      <button class="tab" data-status="completed">✅ Completed</button>
+      <button class="tab" data-status="cancelled">❌ Cancelled</button>
+      <button class="tab" data-status="all">📅 All Today</button>
+    </div>
+    <button class="btn-refresh" onclick="loadOrders()">Refresh</button>
+  </div>
+
+  <div class="orders-list" id="ordersList">
+    <div class="loading">Loading orders...</div>
+  </div>
+
+  <div id="printReceipt" class="print-only"></div>
+
+  <script src="js/orders.js"></script>
+</body>
+</html>`;
+
+fs.writeFileSync(ordersHtmlPath, cleanOrdersHtml, 'utf8');
+console.log('✅ Cleaned orders.html successfully');

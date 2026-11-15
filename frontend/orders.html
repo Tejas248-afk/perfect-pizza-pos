@@ -15,12 +15,12 @@
 <body>
   <header class="pos-header">
     <div class="brand">
-      <span class="logo">ðŸ“‹</span>
+      <span class="logo">📋</span>
       <h2>Orders <small>Live & History</small></h2>
-      <button class="btn-night-toggle" id="nightModeBtn" onclick="toggleNightMode()">ðŸŒ™ Night</button>
+      <button class="btn-night-toggle" id="nightModeBtn" onclick="toggleNightMode()">🌙 Night</button>
     </div>
     
-        <div class="user-info">
+    <div class="user-info">
       <a href="pos.html" class="btn-orders-nav btn-nav-yellow">POS Billing</a>
       <a href="orders.html" class="btn-orders-nav btn-nav-dark">Orders</a>
       <a href="kitchen.html" target="_blank" class="btn-orders-nav btn-nav-dark">Kitchen</a>
@@ -29,27 +29,25 @@
       <a href="reports.html" class="btn-orders-nav btn-nav-blue">Reports</a>
       <a href="customers.html" class="btn-orders-nav" style="background:#10B981;">Customers</a>
       <a href="settings.html" class="btn-orders-nav" style="background:#64748B;">Settings</a>
-    </div>
-      
-      <!-- Navigation Buttons -->
-      <a href="kitchen.html" target="_blank" class="btn-orders-nav btn-nav-dark">ðŸ‘¨â€ðŸ³ Kitchen</a>
-      <a href="tables.html" class="btn-orders-nav btn-nav-yellow">ðŸª‘ Tables</a>
-      <a href="menu-manager.html" class="btn-orders-nav" style="background:#8B5CF6;">ðŸ“ Menu</a>
-      <a href="reports.html" class="btn-orders-nav btn-nav-blue">ðŸ“Š Reports</a>
-      <a href="pos.html" class="btn-orders-nav btn-nav-gray">â† POS</a>
-      
       <button onclick="logout()" class="btn-logout">Logout</button>
-      <a href="customers.html" class="btn-orders-nav" style="background:#10B981;">👥 Customers</a>
     </div>
   </header>
 
   <div class="orders-toolbar">
     <div class="filter-tabs">
-      <button class="tab active" data-status="active"> Active</button>
-      <button class="tab" data-status="completed"> Completed</button>
-      <button class="tab" data-status="cancelled"> Cancelled</button>
-      <button class="tab" data-status="all"> All Today</button>
+      <button class="tab active" data-status="active">⚡ Active</button>
+      <button class="tab" data-status="completed">✅ Completed</button>
+      <button class="tab" data-status="cancelled">❌ Cancelled</button>
+      <button class="tab" data-status="all">📅 All Today</button>
     </div>
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <span style="font-size: 12px; color: #10B981; font-weight: 600; display: inline-flex; align-items: center; gap: 5px;">
+        <span style="width: 8px; height: 8px; background: #10B981; border-radius: 50%; display: inline-block; animation: pulse 1.5s infinite;"></span>
+        Auto-Sync 10s
+      </span>
+      <button class="btn-refresh" onclick="loadOrders(false)">🔄 Refresh</button>
+    </div>
+  </div>
     <button class="btn-refresh" onclick="loadOrders()">Refresh</button>
   </div>
 
@@ -57,9 +55,8 @@
     <div class="loading">Loading orders...</div>
   </div>
 
-    <div id="printReceipt" class="print-only"></div>
+  <div id="printReceipt" class="print-only"></div>
 
-  <!-- Sirf ye ek line honi chahiye niche -->
   <script src="js/orders.js"></script>
 </body>
 </html>

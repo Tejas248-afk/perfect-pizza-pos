@@ -56,7 +56,10 @@
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: 16px;
   background: var(--bg);
-  min-height: calc(100vh - 130px);
+  height: calc(100vh - 135px);
+  overflow-y: auto;
+  align-content: start;
+  scroll-behavior: smooth;
 }
 
 .order-card {

@@ -212,37 +212,50 @@ function renderProducts(categoryId, searchQuery = '') {
   });
 }
 
-// --- 2. Customer Lookup ---
+// --- 2. Customer Lookup (DUAL SEARCH: PHONE OR NAME) ---
 let lookupTimer = null;
-document.getElementById('customerPhone')?.addEventListener('input', (e) => {
-  const phone = e.target.value.trim();
+
+function handleCustomerSearchInput(e) {
+  const value = e.target.value.trim();
   clearTimeout(lookupTimer);
 
-  if (phone.length < 10) {
-    resetCustomerInfo();
-    return;
+  if (e.target.id === 'customerPhone') {
+    const phoneDigits = value.replace(/\D/g, '').slice(-10);
+    if (phoneDigits.length === 10) {
+      lookupTimer = setTimeout(() => searchCustomer(phoneDigits), 300);
+    } else if (phoneDigits.length === 0) {
+      resetCustomerInfo();
+    }
+  } else if (e.target.id === 'customerName') {
+    if (value.length >= 3 && isNaN(value)) {
+      lookupTimer = setTimeout(() => searchCustomer(value), 500);
+    }
   }
-  lookupTimer = setTimeout(() => searchCustomer(phone), 300);
-});
+}
+
+document.getElementById('customerPhone')?.addEventListener('input', handleCustomerSearchInput);
+document.getElementById('customerName')?.addEventListener('input', handleCustomerSearchInput);
 
 function manualCustomerSearch() {
   const phone = document.getElementById('customerPhone')?.value.trim();
-  if (phone && phone.length >= 10) searchCustomer(phone);
-  else alert('Please enter a valid 10-digit phone number');
+  const name = document.getElementById('customerName')?.value.trim();
+  const query = phone || name;
+  if (query) searchCustomer(query);
+  else alert('Please enter a valid Phone Number or Name');
 }
 
-async function searchCustomer(phone) {
+async function searchCustomer(query) {
   try {
-    const cleanPhone = String(phone).replace(/[^0-9]/g, '').slice(-10);
-
-    const res = await fetch(`${API_URL}/orders/customer/${cleanPhone}`, {
+    const res = await fetch(`${API_URL}/orders/customer/${encodeURIComponent(query)}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     const data = await res.json();
     const card = document.getElementById('customerCard');
 
-    if (!data.found) {
-      resetCustomerInfo();
+    if (!data.found || !data.customer) {
+      // If not found, don't clear the typed name, just reset the history/coins
+      const isPhone = query.replace(/\D/g, '').length >= 10;
+      if (isPhone) resetCustomerInfo(true);
       return;
     }
 
@@ -250,23 +263,20 @@ async function searchCustomer(phone) {
     const c = data.customer || {};
     const ordersList = data.previousOrders || [];
 
-    let displayName = c.name || '';
-    if ((!displayName || displayName.toLowerCase() === 'guest') && ordersList.length > 0) {
-      const orderWithName = ordersList.find(o => o.customer?.name && o.customer.name.toLowerCase() !== 'guest');
-      if (orderWithName) {
-        displayName = orderWithName.customer.name;
-      }
-    }
-    if (!displayName) displayName = 'Guest';
+    let displayName = c.name || 'Guest';
 
     const nameInput = document.getElementById('customerName');
+    const phoneInput = document.getElementById('customerPhone');
     const addrInput = document.getElementById('customerAddress');
 
-    if (nameInput) nameInput.value = (displayName !== 'Guest') ? displayName : '';
+    // Auto-fill missing fields
+    if (nameInput && displayName !== 'Guest' && !nameInput.value) nameInput.value = displayName;
+    if (phoneInput && c.phone && c.phone !== 'N/A' && !phoneInput.value) phoneInput.value = c.phone;
+    
     if (addrInput) {
       const addr = c.address || c.deliveryAddress || (ordersList[0]?.deliveryAddress) || '';
-      addrInput.value = addr;
-      if (addr.trim() !== '') {
+      if (!addrInput.value) addrInput.value = addr;
+      if (addrInput.value.trim() !== '') {
         addrInput.style.display = 'block';
       }
     }
@@ -276,7 +286,7 @@ async function searchCustomer(phone) {
     const coinsBalance = Number(c.rewardCoins) || 0;
 
     document.getElementById('ccName').innerText = displayName;
-    document.getElementById('ccPhone').innerText = c.phone || cleanPhone;
+    document.getElementById('ccPhone').innerText = c.phone || query;
     document.getElementById('ccCoins').innerText = coinsBalance;
     document.getElementById('ccOrders').innerText = totalOrdersCount;
     document.getElementById('ccSpent').innerText = totalSpentAmt;
@@ -350,7 +360,7 @@ window.printPastOrder = async function(orderId) {
   }
 }
 
-function resetCustomerInfo() {
+function resetCustomerInfo(keepInputs = false) {
   currentCustomer = null;
   document.getElementById('customerCard')?.classList.add('hidden');
   resetPrevOrdersCollapse();
@@ -358,10 +368,14 @@ function resetCustomerInfo() {
   const prevBox = document.getElementById('ccPrevOrders');
   if (prevBox) prevBox.innerHTML = '';
 
-  const nameInput = document.getElementById('customerName');
-  const addrInput = document.getElementById('customerAddress');
-  if (nameInput) nameInput.value = '';
-  if (addrInput) addrInput.value = '';
+  if (!keepInputs) {
+    const nameInput = document.getElementById('customerName');
+    const addrInput = document.getElementById('customerAddress');
+    const phoneInput = document.getElementById('customerPhone');
+    if (nameInput) nameInput.value = '';
+    if (addrInput) addrInput.value = '';
+    if (phoneInput) phoneInput.value = '';
+  }
 
   const toggle = document.getElementById('redeemCoinsToggle');
   if (toggle) {
