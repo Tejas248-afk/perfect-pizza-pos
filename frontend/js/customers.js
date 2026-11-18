@@ -1,6 +1,5 @@
 ﻿const RENDER_BACKEND_URL = "https://perfect-pizza-pos.onrender.com";
 
-// Smart backend URL resolution (Supports file://, localhost, and deployed URL)
 const isLocal = 
   window.location.protocol === 'file:' ||
   window.location.hostname === 'localhost' ||
@@ -10,8 +9,6 @@ const isLocal =
 window.SOCKET_URL = isLocal ? 'http://localhost:5000' : RENDER_BACKEND_URL;
 window.API_URL = `${window.SOCKET_URL}/api`;
 const API_URL = window.API_URL;
-
-console.log("Connected API URL:", API_URL);
 
 let token = localStorage.getItem('token');
 let user = null;
@@ -41,7 +38,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function loadCustomers() {
   const tbody = document.getElementById('customerTableBody');
-  tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 30px;">Loading customers...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 30px;">⏳ Loading customer records...</td></tr>';
 
   try {
     const url = `${API_URL}/customers?page=${currentPage}&limit=50&search=${encodeURIComponent(currentSearch)}`;
@@ -57,32 +54,45 @@ async function loadCustomers() {
     const data = await res.json();
     totalPages = data.pages || 1;
 
+    // Render Stats
+    if (data.stats) {
+      const statCust = document.getElementById('kpiTotalCustomers');
+      const statSpent = document.getElementById('kpiTotalSpent');
+      const statCoins = document.getElementById('kpiTotalCoins');
+      const statOrders = document.getElementById('kpiTotalOrders');
+      
+      if (statCust) statCust.innerText = Number(data.total || 0).toLocaleString('en-IN');
+      if (statSpent) statSpent.innerText = `₹${Number(data.stats.totalSpentAll || 0).toLocaleString('en-IN')}`;
+      if (statCoins) statCoins.innerText = Number(data.stats.totalCoinsAll || 0).toLocaleString('en-IN');
+      if (statOrders) statOrders.innerText = Number(data.stats.totalOrdersAll || 0).toLocaleString('en-IN');
+    }
+
     renderTable(data.customers || []);
     updatePagination(data.total || 0, data.customers ? data.customers.length : 0);
   } catch (err) {
     console.error("loadCustomers Error:", err);
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #EF4444; padding: 20px;"><strong>Error:</strong> ${err.message}<br><small style="color:#64748B;">Check if POS Backend server is running on port 5000</small></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #EF4444; padding: 20px;"><strong>Error:</strong> ${err.message}<br><small style="color:#64748B;">Please ensure server is running</small></td></tr>`;
   }
 }
 
 function renderTable(customers) {
   const tbody = document.getElementById('customerTableBody');
   if (customers.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 30px;">No customers found.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 30px; color:#64748B;">No customer records found.</td></tr>';
     return;
   }
 
-  tbody.innerHTML = customers.map(c => `
+  tbody.innerHTML = customers.map((c, idx) => `
     <tr>
-      <td><strong>${escapeHtml(c.name || 'Guest')}</strong></td>
-      <td>${escapeHtml(c.phone || '-')}</td>
-      <td>${escapeHtml(c.address || '-')}</td>
-      <td>🪙 ${c.rewardCoins || 0}</td>
+      <td><strong>${escapeHtml(c.name && c.name.toLowerCase() !== 'guest' ? c.name : 'Guest Customer')}</strong></td>
+      <td><span style="font-weight:600; color:#1E40AF;">📞 ${escapeHtml(c.phone || '-')}</span></td>
+      <td><span style="color:#475569; font-size:13px;">${escapeHtml(c.address || '—')}</span></td>
+      <td><span class="badge-coin">🪙 ${c.rewardCoins || 0}</span></td>
       <td>📦 ${c.totalOrders || 0}</td>
-      <td>${c.totalSpent || 0}</td>
+      <td><strong>₹${Number(c.totalSpent || 0).toLocaleString('en-IN')}</strong></td>
       <td style="text-align: right;">
-        <button class="btn-sm btn-edit" onclick="openEditModal('${c._id}', '${escapeQuotes(c.name)}', '${escapeQuotes(c.phone)}', '${escapeQuotes(c.address)}')">Edit</button>
-        <button class="btn-sm btn-del" onclick="deleteCustomer('${c._id}', '${escapeQuotes(c.name)}')">Delete</button>
+        <button class="btn-sm btn-edit" onclick="openEditModal('${c._id}', '${escapeQuotes(c.name)}', '${escapeQuotes(c.phone)}', '${escapeQuotes(c.address)}', ${c.rewardCoins || 0})">✏️ Edit</button>
+        <button class="btn-sm btn-del" onclick="deleteCustomer('${c._id}', '${escapeQuotes(c.name)}')">🗑️</button>
       </td>
     </tr>
   `).join('');
@@ -118,15 +128,17 @@ function openAddModal() {
   document.getElementById('custName').value = '';
   document.getElementById('custPhone').value = '';
   document.getElementById('custAddress').value = '';
+  document.getElementById('custCoins').value = '0';
   document.getElementById('custModal').classList.add('active');
 }
 
-function openEditModal(id, name, phone, address) {
-  document.getElementById('modalTitle').innerText = 'Edit Customer';
+function openEditModal(id, name, phone, address, coins) {
+  document.getElementById('modalTitle').innerText = 'Edit Customer Record';
   document.getElementById('custId').value = id;
   document.getElementById('custName').value = name || '';
   document.getElementById('custPhone').value = phone || '';
   document.getElementById('custAddress').value = address || '';
+  document.getElementById('custCoins').value = coins || 0;
   document.getElementById('custModal').classList.add('active');
 }
 
@@ -140,8 +152,9 @@ async function saveCustomer(e) {
   const name = document.getElementById('custName').value;
   const phone = document.getElementById('custPhone').value;
   const address = document.getElementById('custAddress').value;
+  const rewardCoins = document.getElementById('custCoins').value;
 
-  const payload = { name, phone, address };
+  const payload = { name, phone, address, rewardCoins };
   const method = id ? 'PUT' : 'POST';
   const url = id ? `${API_URL}/customers/${id}` : `${API_URL}/customers`;
 
@@ -156,9 +169,9 @@ async function saveCustomer(e) {
     });
 
     const data = await res.json();
-    if (!res.ok) throw new Error(data.message || 'Failed to save');
+    if (!res.ok) throw new Error(data.message || 'Failed to save customer');
 
-    alert(id ? 'Customer updated successfully!' : 'Customer added successfully!');
+    alert(id ? 'Customer updated successfully! ✅' : 'Customer added successfully! ✅');
     closeModal();
     loadCustomers();
   } catch (err) {
@@ -186,7 +199,6 @@ async function deleteCustomer(id, name) {
 
 async function exportToCSV() {
   try {
-    alert('Preparing Excel export... Click OK and wait a moment.');
     const url = `${API_URL}/customers?exportAll=true&search=${encodeURIComponent(currentSearch)}`;
     const res = await fetch(url, {
       headers: { 'Authorization': `Bearer ${token}` }
@@ -203,7 +215,7 @@ async function exportToCSV() {
     }
 
     let csvContent = "data:text/csv;charset=utf-8,";
-    csvContent += "Name,Phone,Address,Reward Coins,Total Orders,Total Spent\n";
+    csvContent += "Name,Phone,Address,Reward Coins,Total Orders,Total Spent (INR)\n";
 
     customers.forEach(c => {
       const name = `"${(c.name || 'Guest').replace(/"/g, '""')}"`;

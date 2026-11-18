@@ -1,4 +1,8 @@
 ﻿const Customer = require('../models/Customer');
+const Order = require('../models/Order');
+
+// Helper: 10-digit clean phone
+const get10Digits = (p) => String(p || '').replace(/\D/g, '').slice(-10);
 
 // @desc    Get all customers with search & pagination
 // @route   GET /api/customers
@@ -9,17 +13,24 @@ const getCustomers = async (req, res) => {
 
     let query = {};
 
-    if (search) {
-      const searchRegex = new RegExp(search.trim(), 'i');
-      query.$or = [
+    if (search && search.trim()) {
+      const term = search.trim();
+      const cleanP = get10Digits(term);
+      const searchRegex = new RegExp(term, 'i');
+      
+      const orConditions = [
         { name: searchRegex },
-        { phone: searchRegex },
         { address: searchRegex },
+        { phone: searchRegex }
       ];
+      if (cleanP.length >= 4) {
+        orConditions.push({ phone: { $regex: cleanP } });
+      }
+      query.$or = orConditions;
     }
 
     if (exportAll === 'true') {
-      const customers = await Customer.find(query).sort({ updatedAt: -1 }).lean();
+      const customers = await Customer.find(query).sort({ updatedAt: -1, createdAt: -1 }).lean();
       return res.json({ customers, total: customers.length });
     }
 
@@ -27,20 +38,38 @@ const getCustomers = async (req, res) => {
     const limitNum = parseInt(limit, 10) || 50;
     const skip = (pageNum - 1) * limitNum;
 
-    const [customers, total] = await Promise.all([
+    const [customers, total, stats] = await Promise.all([
       Customer.find(query)
-        .sort({ updatedAt: -1 })
+        .sort({ updatedAt: -1, createdAt: -1 })
         .skip(skip)
         .limit(limitNum)
         .lean(),
       Customer.countDocuments(query),
+      Customer.aggregate([
+        {
+          $group: {
+            _id: null,
+            totalSpentAll: { $sum: '$totalSpent' },
+            totalCoinsAll: { $sum: '$rewardCoins' },
+            totalOrdersAll: { $sum: '$totalOrders' }
+          }
+        }
+      ])
     ]);
+
+    const summaryStats = stats[0] || { totalSpentAll: 0, totalCoinsAll: 0, totalOrdersAll: 0 };
 
     res.json({
       customers,
       total,
       page: pageNum,
       pages: Math.ceil(total / limitNum) || 1,
+      stats: {
+        totalCustomers: total,
+        totalSpentAll: summaryStats.totalSpentAll || 0,
+        totalCoinsAll: summaryStats.totalCoinsAll || 0,
+        totalOrdersAll: summaryStats.totalOrdersAll || 0
+      }
     });
   } catch (error) {
     console.error('getCustomers Error:', error);
@@ -53,26 +82,33 @@ const getCustomers = async (req, res) => {
 // @access  Private
 const createCustomer = async (req, res) => {
   try {
-    const branchId = req.user?.branch?._id || req.user?.branch;
-    const { name, phone, address } = req.body;
+    const branchId = req.user?.branch?._id || req.user?.branch || null;
+    const { name, phone, address, rewardCoins } = req.body;
 
-    if (!phone) {
-      return res.status(400).json({ message: 'Phone number is required' });
+    const cleanPhone = get10Digits(phone);
+    if (!cleanPhone || cleanPhone.length !== 10) {
+      return res.status(400).json({ message: 'Valid 10-digit phone number is required' });
     }
 
-    let phoneStr = String(phone).replace(/[^0-9]/g, '');
-    if (phoneStr.length >= 10) phoneStr = phoneStr.slice(-10);
+    const existing = await Customer.findOne({
+      $or: [
+        { phone: cleanPhone },
+        { phone: { $regex: cleanPhone + '$' } }
+      ]
+    });
 
-    const existing = await Customer.findOne({ phone: phoneStr });
     if (existing) {
       return res.status(400).json({ message: 'Customer with this phone already exists' });
     }
 
     const customer = await Customer.create({
-      branch: branchId || null,
-      name: name || 'Guest',
-      phone: phoneStr,
-      address: address || '',
+      branch: branchId,
+      name: name && name.trim() ? name.trim() : 'Guest',
+      phone: cleanPhone,
+      address: address ? address.trim() : '',
+      rewardCoins: Number(rewardCoins) || 0,
+      totalOrders: 0,
+      totalSpent: 0
     });
 
     res.status(201).json(customer);
@@ -87,15 +123,18 @@ const createCustomer = async (req, res) => {
 // @access  Private
 const updateCustomer = async (req, res) => {
   try {
-    const { name, phone, address } = req.body;
+    const { name, phone, address, rewardCoins } = req.body;
     let updateFields = {};
 
-    if (name !== undefined) updateFields.name = String(name).trim();
+    if (name !== undefined) updateFields.name = String(name).trim() || 'Guest';
     if (address !== undefined) updateFields.address = String(address).trim();
+    if (rewardCoins !== undefined) updateFields.rewardCoins = Math.max(0, Number(rewardCoins) || 0);
+
     if (phone) {
-      let phoneStr = String(phone).replace(/[^0-9]/g, '');
-      if (phoneStr.length >= 10) phoneStr = phoneStr.slice(-10);
-      updateFields.phone = phoneStr;
+      const cleanPhone = get10Digits(phone);
+      if (cleanPhone.length === 10) {
+        updateFields.phone = cleanPhone;
+      }
     }
 
     const customer = await Customer.findByIdAndUpdate(

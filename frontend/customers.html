@@ -3,14 +3,25 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Customer Records - Perfect Pizza</title>
+  <title>Customer Directory - Perfect Pizza</title>
   <link rel="stylesheet" href="css/style.css">
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     .cust-container { padding: 20px; max-width: 1400px; margin: 0 auto; }
+    
+    /* KPI Stats Bar */
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 15px; margin-bottom: 20px; }
+    .kpi-card { background: #fff; padding: 18px 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.04); border-left: 5px solid #2563EB; }
+    .kpi-card.green { border-left-color: #10B981; }
+    .kpi-card.yellow { border-left-color: #F59E0B; }
+    .kpi-card.purple { border-left-color: #8B5CF6; }
+    .kpi-title { font-size: 13px; color: #64748B; font-weight: 600; text-transform: uppercase; margin-bottom: 4px; }
+    .kpi-value { font-size: 22px; font-weight: 700; color: #0F172A; }
+
     .cust-actions { display: flex; justify-content: space-between; align-items: center; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; }
-    .search-box { flex: 1; min-width: 250px; position: relative; }
-    .search-box input { width: 100%; padding: 12px 16px; border-radius: 8px; border: 1px solid #ccc; font-size: 15px; font-family: inherit; }
+    .search-box { flex: 1; min-width: 280px; position: relative; }
+    .search-box input { width: 100%; padding: 12px 16px; border-radius: 8px; border: 1px solid #CBD5E1; font-size: 14px; font-family: inherit; outline: none; }
+    .search-box input:focus { border-color: #2563EB; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
     .btn-group { display: flex; gap: 10px; }
     .btn-cust { padding: 10px 18px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-size: 14px; transition: 0.2s; }
     .btn-add { background: #2563EB; color: #fff; }
@@ -18,12 +29,13 @@
     .btn-export { background: #10B981; color: #fff; }
     .btn-export:hover { background: #059669; }
     
-    .table-card { background: #fff; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); overflow: hidden; }
-    .cust-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 14px; }
+    .table-card { background: #fff; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); overflow-x: auto; }
+    .cust-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 14px; min-width: 800px; }
     .cust-table th { background: #F8FAFC; color: #475569; font-weight: 600; padding: 14px 16px; border-bottom: 1px solid #E2E8F0; }
     .cust-table td { padding: 12px 16px; border-bottom: 1px solid #EDF2F7; color: #1E293B; }
     .cust-table tr:hover { background: #F1F5F9; }
     
+    .badge-coin { background: #FEF3C7; color: #92400E; font-weight: 700; padding: 4px 8px; border-radius: 6px; font-size: 12px; display: inline-block; }
     .btn-sm { padding: 6px 12px; border-radius: 6px; border: none; font-size: 12px; font-weight: 600; cursor: pointer; }
     .btn-edit { background: #F59E0B; color: #fff; margin-right: 5px; }
     .btn-del { background: #EF4444; color: #fff; }
@@ -40,7 +52,7 @@
     .modal-box h3 { margin-top: 0; font-size: 18px; color: #0F172A; }
     .form-group { margin-bottom: 15px; }
     .form-group label { display: block; margin-bottom: 6px; font-weight: 500; font-size: 13px; color: #475569; }
-    .form-group input, .form-group textarea { width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #CBD5E1; font-family: inherit; font-size: 14px; }
+    .form-group input, .form-group textarea { width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #CBD5E1; font-family: inherit; font-size: 14px; box-sizing: border-box; }
     .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
   </style>
 </head>
@@ -48,9 +60,9 @@
   <header class="pos-header">
     <div class="brand">
       <span class="logo">👥</span>
-      <h2>Customer Directory <small>3,200+ Records · Edit · Export</small></h2>
+      <h2>Customer Records <small>Directory · Loyalty Points · Export</small></h2>
     </div>
-        <div class="user-info">
+    <div class="user-info">
       <a href="pos.html" class="btn-orders-nav btn-nav-yellow">POS Billing</a>
       <a href="orders.html" class="btn-orders-nav btn-nav-dark">Orders</a>
       <a href="kitchen.html" target="_blank" class="btn-orders-nav btn-nav-dark">Kitchen</a>
@@ -63,9 +75,30 @@
   </header>
 
   <div class="cust-container">
+    <!-- Top KPI Cards -->
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-title">Total Customers</div>
+        <div class="kpi-value" id="kpiTotalCustomers">0</div>
+      </div>
+      <div class="kpi-card green">
+        <div class="kpi-title">Total Revenue</div>
+        <div class="kpi-value" id="kpiTotalSpent">₹0</div>
+      </div>
+      <div class="kpi-card yellow">
+        <div class="kpi-title">Total Reward Coins</div>
+        <div class="kpi-value" id="kpiTotalCoins">0</div>
+      </div>
+      <div class="kpi-card purple">
+        <div class="kpi-title">Total Orders Completed</div>
+        <div class="kpi-value" id="kpiTotalOrders">0</div>
+      </div>
+    </div>
+
+    <!-- Search & Actions -->
     <div class="cust-actions">
       <div class="search-box">
-        <input type="text" id="searchInput" placeholder="🔍 Search by Name, Phone Number, or Address..." oninput="onSearchChange()">
+        <input type="text" id="searchInput" placeholder="🔍 Search by Name, Mobile Number, or Address..." oninput="onSearchChange()">
       </div>
       <div class="btn-group">
         <button class="btn-cust btn-add" onclick="openAddModal()">➕ Add Customer</button>
@@ -73,16 +106,17 @@
       </div>
     </div>
 
+    <!-- Table -->
     <div class="table-card">
       <table class="cust-table">
         <thead>
           <tr>
-            <th>Name</th>
-            <th>Phone</th>
-            <th>Address</th>
-            <th>Coins</th>
-            <th>Orders</th>
-            <th>Spent</th>
+            <th>Customer Name</th>
+            <th>Phone Number</th>
+            <th>Delivery Address</th>
+            <th>Reward Coins</th>
+            <th>Total Orders</th>
+            <th>Total Spent</th>
             <th style="text-align: right;">Actions</th>
           </tr>
         </thead>
@@ -110,15 +144,19 @@
         <input type="hidden" id="custId">
         <div class="form-group">
           <label>Customer Name</label>
-          <input type="text" id="custName" required placeholder="e.g. Rahul Sharma">
+          <input type="text" id="custName" required placeholder="e.g. Saurabh Sharma">
         </div>
         <div class="form-group">
-          <label>Phone Number</label>
-          <input type="text" id="custPhone" required placeholder="10-digit phone number">
+          <label>Phone Number (10 Digits)</label>
+          <input type="tel" id="custPhone" required maxlength="10" placeholder="10-digit mobile number">
         </div>
         <div class="form-group">
-          <label>Address</label>
-          <textarea id="custAddress" rows="3" placeholder="Street / Area / House No"></textarea>
+          <label>Delivery Address</label>
+          <textarea id="custAddress" rows="3" placeholder="House / Street / Landmark"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Reward Coins Balance</label>
+          <input type="number" id="custCoins" min="0" value="0">
         </div>
         <div class="modal-actions">
           <button type="button" class="btn-cust" style="background:#E2E8F0; color:#334155;" onclick="closeModal()">Cancel</button>
