@@ -1,4 +1,5 @@
 const axios = require('axios');
+const Customer = require('../models/Customer');
 
 // ==============================
 // CONFIG
@@ -33,19 +34,8 @@ function get10Digits(phone) {
   return last10.length === 10 ? last10 : null;
 }
 
-function formatDateTime(dateInput) {
-  const d = new Date(dateInput || Date.now());
-  const date = d.toLocaleDateString('en-IN', {
-    day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata',
-  });
-  const time = d.toLocaleTimeString('en-IN', {
-    hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata',
-  });
-  return { date, time };
-}
-
-// 1. Invoice Message Template (UPDATED WITH NEW FORMAT & REWARD COINS)
-function buildInvoiceMessage(order = {}) {
+// 1. Invoice Message Template (WITH TOTAL REWARD POINTS)
+function buildInvoiceMessage(order = {}, totalCoins = null) {
   const name =
     order?.customer?.name && String(order.customer.name).toLowerCase() !== 'guest'
       ? order.customer.name
@@ -54,25 +44,17 @@ function buildInvoiceMessage(order = {}) {
   const billNo = order?.orderNumber || 'ORD-101';
   const amount = Number(order?.grandTotal || 0);
   const paidAmount = String(order?.paymentMethod || '').toLowerCase() === 'pending' ? 0 : amount;
-  
   const rewardPointsEarned = Number(order?.rewardCoinsEarned || 0);
   
-  // Total Reward Points balance calculation
-  let totalRewardPoints = rewardPointsEarned;
-  if (order?.customer?.rewardCoins != null && !isNaN(Number(order.customer.rewardCoins))) {
-    totalRewardPoints = Number(order.customer.rewardCoins);
-  } else if (order?.customerData?.rewardCoins != null && !isNaN(Number(order.customerData.rewardCoins))) {
-    totalRewardPoints = Number(order.customerData.rewardCoins);
-  } else if (order?.totalRewardCoins != null && !isNaN(Number(order.totalRewardCoins))) {
-    totalRewardPoints = Number(order.totalRewardCoins);
-  }
+  // Total Coins Balance: live balance passed or calculated
+  const totalRewardPoints = totalCoins != null ? Number(totalCoins) : rewardPointsEarned;
 
   const invoiceLink = order?._id
     ? `${INVOICE_BASE_URL}/invoice.html?id=${order._id}`
     : `${INVOICE_BASE_URL}`;
 
   return (
-`🙏 Thank You for Ordering from *Perfect Pizza!* 🍕
+`🙏 Thank You for Ordering from Perfect Pizza! 🍕
 
 Dear *${name}*,
 Your delicious order has been received! 🍕🛵
@@ -123,7 +105,7 @@ If you have any questions or this was done by mistake, please contact us.
 }
 
 // ==============================
-// PUBLIC SENDER (EXACTLY 1 HTTP CALL - NO LOOPS)
+// PUBLIC SENDER
 // ==============================
 async function sendDirectWhatsAppMessage(phone, order = {}, isCancellation = false) {
   try {
@@ -142,12 +124,35 @@ async function sendDirectWhatsAppMessage(phone, order = {}, isCancellation = fal
       return { ok: true, skipped: 'duplicate_prevented' };
     }
 
+    // 🪙 LIVE REWARD COINS BALANCE FETCH
+    let totalCoins = 0;
+    try {
+      const cust = await Customer.findOne({
+        $or: [
+          { phone: phone10 },
+          { phone: { $regex: phone10 + '$', $options: 'i' } }
+        ]
+      }).lean();
+
+      if (cust) {
+        totalCoins = Number(cust.rewardCoins || 0);
+        // Agar order abhi 'new' hai aur coinsAwarded nahi hua, toh earned coins ko add karke total dikhao
+        if (!order.coinsAwarded && order.rewardCoinsEarned) {
+          totalCoins += Number(order.rewardCoinsEarned);
+        }
+      } else {
+        totalCoins = Number(order.rewardCoinsEarned || 0);
+      }
+    } catch (dbErr) {
+      console.error("Coins fetch error:", dbErr.message);
+      totalCoins = Number(order.rewardCoinsEarned || 0);
+    }
+
     const phone12 = `91${phone10}`;
-    const message = isCancellation ? buildCancellationMessage(order) : buildInvoiceMessage(order);
+    const message = isCancellation ? buildCancellationMessage(order) : buildInvoiceMessage(order, totalCoins);
 
-    console.log(`🚀 Sending SINGLE WhatsApp GET -> Phone: ${phone12} | Order: ${order?.orderNumber || 'N/A'}`);
+    console.log(`🚀 Sending WhatsApp -> Phone: ${phone12} | Order: ${order?.orderNumber || 'N/A'} | Coins: ${totalCoins}`);
 
-    // 🔥 EXACTLY ONE SINGLE API CALL! NO LOOPS!
     const res = await axios.get(WAPI_SEND_URL, {
       params: {
         access_token: API_TOKEN,
