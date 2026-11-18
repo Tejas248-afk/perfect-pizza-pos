@@ -1,21 +1,21 @@
 ﻿const express = require('express');
 const router = express.Router();
-const { protect } = require('../middleware/auth.middleware');
 const {
   getCustomers,
+  syncCustomersFromOrders,
   createCustomer,
   updateCustomer,
-  deleteCustomer,
+  deleteCustomer
 } = require('../controllers/customer.controller');
 
-router.use(protect);
+// Static routes first
+router.get('/', getCustomers);
+router.post('/', createCustomer);
+router.post('/sync', syncCustomersFromOrders);
+router.get('/sync', syncCustomersFromOrders);
 
-router.route('/')
-  .get(getCustomers)
-  .post(createCustomer);
-
-router.route('/:id')
-  .put(updateCustomer)
-  .delete(deleteCustomer);
+// Parameterized routes last
+router.put('/:id', updateCustomer);
+router.delete('/:id', deleteCustomer);
 
 module.exports = router;

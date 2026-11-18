@@ -75,14 +75,46 @@ async function loadCustomers() {
   }
 }
 
+// 🔥 RECOVER ALL PAST ORDERS CUSTOMERS WITH 1-CLICK
+async function syncPastOrders() {
+  const btn = document.getElementById('syncBtn');
+  const oldText = btn.innerHTML;
+  btn.innerHTML = '⏳ Syncing Records...';
+  btn.disabled = true;
+
+  try {
+    const res = await fetch(`${API_URL}/customers/sync`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Sync failed');
+
+    alert(`✅ ${data.message}`);
+    loadCustomers();
+  } catch (err) {
+    alert('Sync Error: ' + err.message);
+  } finally {
+    btn.innerHTML = oldText;
+    btn.disabled = false;
+  }
+}
+
 function renderTable(customers) {
   const tbody = document.getElementById('customerTableBody');
   if (customers.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 30px; color:#64748B;">No customer records found.</td></tr>';
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 30px; color:#64748B;">
+      No customer records found.<br>
+      <button class="btn-cust btn-sync mt-2" style="background:#8B5CF6; color:#fff; margin-top:10px;" onclick="syncPastOrders()">🔄 Sync Past Orders to Recover Customers</button>
+    </td></tr>`;
     return;
   }
 
-  tbody.innerHTML = customers.map((c, idx) => `
+  tbody.innerHTML = customers.map((c) => `
     <tr>
       <td><strong>${escapeHtml(c.name && c.name.toLowerCase() !== 'guest' ? c.name : 'Guest Customer')}</strong></td>
       <td><span style="font-weight:600; color:#1E40AF;">📞 ${escapeHtml(c.phone || '-')}</span></td>

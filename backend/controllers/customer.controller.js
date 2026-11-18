@@ -3,6 +3,7 @@ const Order = require('../models/Order');
 
 // Helper: 10-digit clean phone
 const get10Digits = (p) => String(p || '').replace(/\D/g, '').slice(-10);
+const safeNum = (v) => (isNaN(Number(v)) ? 0 : Number(v));
 
 // @desc    Get all customers with search & pagination
 // @route   GET /api/customers
@@ -74,6 +75,102 @@ const getCustomers = async (req, res) => {
   } catch (error) {
     console.error('getCustomers Error:', error);
     res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    🔥 SYNC & RECOVER ALL PAST CUSTOMERS FROM OLD ORDERS
+// @route   POST /api/customers/sync
+// @access  Private
+const syncCustomersFromOrders = async (req, res) => {
+  try {
+    const orders = await Order.find({}).sort({ createdAt: 1 }).lean();
+    const customerMap = {};
+
+    for (const order of orders) {
+      const rawPhone = order.customer?.phone || order.customerPhone || order.phone;
+      const phone = get10Digits(rawPhone);
+      if (!phone || phone.length !== 10) continue;
+
+      if (!customerMap[phone]) {
+        customerMap[phone] = {
+          phone,
+          name: 'Guest',
+          address: '',
+          totalOrders: 0,
+          totalSpent: 0,
+          earnedCoins: 0,
+          usedCoins: 0,
+          branch: order.branch || null
+        };
+      }
+
+      const c = customerMap[phone];
+
+      // Extract real name (ignore Guest if real name exists in any order)
+      const ordName = (order.customer?.name || order.customerName || '').trim();
+      if (ordName && ordName.toLowerCase() !== 'guest') {
+        c.name = ordName;
+      }
+
+      // Extract address
+      const ordAddr = (order.deliveryAddress || order.customerAddress || order.customer?.address || '').trim();
+      if (ordAddr && !ordAddr.toLowerCase().includes('dine-in') && !ordAddr.toLowerCase().includes('table')) {
+        c.address = ordAddr;
+      }
+
+      const status = String(order.status || '').toLowerCase();
+      const isCancelled = ['cancelled', 'canceled', 'rejected'].includes(status);
+
+      if (!isCancelled) {
+        c.totalOrders += 1;
+        c.totalSpent += safeNum(order.grandTotal);
+        c.usedCoins += safeNum(order.rewardCoinsUsed);
+
+        if (status === 'completed') {
+          const earned = order.rewardCoinsEarned != null
+            ? safeNum(order.rewardCoinsEarned)
+            : Math.floor(safeNum(order.grandTotal) / 20);
+          c.earnedCoins += earned;
+        }
+      }
+    }
+
+    let syncedCount = 0;
+    for (const phone in customerMap) {
+      const data = customerMap[phone];
+      const rewardCoins = Math.max(0, data.earnedCoins - data.usedCoins);
+
+      await Customer.findOneAndUpdate(
+        {
+          $or: [
+            { phone: data.phone },
+            { phone: { $regex: data.phone + '$' } }
+          ]
+        },
+        {
+          $set: {
+            phone: data.phone,
+            name: data.name,
+            address: data.address,
+            totalOrders: data.totalOrders,
+            totalSpent: data.totalSpent,
+            rewardCoins: rewardCoins,
+            branch: data.branch
+          }
+        },
+        { upsert: true, new: true }
+      );
+      syncedCount++;
+    }
+
+    res.json({
+      success: true,
+      message: `Successfully recovered & synced ${syncedCount} customer records from past orders!`,
+      syncedCount
+    });
+  } catch (err) {
+    console.error('Sync Error:', err);
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
@@ -174,6 +271,7 @@ const deleteCustomer = async (req, res) => {
 
 module.exports = {
   getCustomers,
+  syncCustomersFromOrders,
   createCustomer,
   updateCustomer,
   deleteCustomer,
